@@ -33,7 +33,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --text: #94a3b8;
     --text-h: #f1f5f9;
     --text-muted: #64748b;
@@ -53,9 +53,38 @@
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
   }
 
-  #social .button-icon {
+  :root:not(.light) #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+html.dark {
+  --text: #94a3b8;
+  --text-h: #f1f5f9;
+  --text-muted: #64748b;
+  --bg: #0f172a;
+  --bg-subtle: #1e293b;
+  --bg-sunken: #0f172a;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --code-bg: #1e293b;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-bg: rgba(99, 102, 241, 0.12);
+  --accent-border: rgba(129, 140, 248, 0.4);
+  --social-bg: rgba(30, 41, 59, 0.5);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+html.dark #social .button-icon {
+  filter: invert(1) brightness(2);
+}
+
+html.light {
+  color-scheme: light;
 }
 
 #root {
