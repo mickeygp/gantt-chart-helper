@@ -365,6 +365,11 @@
   padding-left: calc(var(--task-indent-level, 0) * 18px);
 }
 
+.gantt-task-name-cell .gantt-input--task-name {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ─── Drag Handle ───────────────────────────────────────── */
 
 .gantt-drag-handle {
@@ -512,6 +517,16 @@
   color: var(--accent);
   background: var(--accent-bg);
   border-color: var(--accent-border);
+}
+
+.gantt-btn--subtask-inline {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.gantt-table__task-row:hover .gantt-btn--subtask-inline {
+  opacity: 1;
 }
 
 /* ─── Delete button ─────────────────────────────────────── */

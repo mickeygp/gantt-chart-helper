@@ -177,16 +177,23 @@ function ganttTaskCellFilled(rgb: string): CellStyle {
   }
 }
 
-function ganttTaskNameCell(alt: boolean, color: string): CellStyle {
+function ganttTaskNameCell(alt: boolean, color: string, depth = 0): CellStyle {
+  const isSubtask = depth > 0
   return {
-    font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRAND.textDark } },
+    font: {
+      name: 'Calibri',
+      sz: isSubtask ? 10 : 11,
+      bold: !isSubtask,
+      italic: isSubtask,
+      color: { rgb: isSubtask ? BRAND.textMuted : BRAND.textDark },
+    },
     fill: { patternType: 'solid', fgColor: { rgb: alt ? BRAND.altRow : BRAND.white } },
-    alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+    alignment: { vertical: 'center', horizontal: 'left', indent: 1 + depth * 2 },
     border: {
       top: thin,
       bottom: thin,
       right: thinDark,
-      left: { style: 'thick', color: { rgb: color } },
+      left: { style: isSubtask ? 'thin' : 'thick', color: { rgb: color } },
     },
   }
 }
@@ -284,6 +291,24 @@ function iterateDays(fromISO: string, toISO: string): string[] {
     cur = addDaysISO(cur, 1)
   }
   return out
+}
+
+function buildDepthMap(tasks: GanttTask[]): Map<string, number> {
+  const byId = new Map(tasks.map((t) => [t.id, t]))
+  const map = new Map<string, number>()
+  for (const t of tasks) {
+    let depth = 0
+    let cur = t.parentId
+    while (cur) {
+      const parent = byId.get(cur)
+      if (!parent) break
+      depth += 1
+      if (depth > 12) break
+      cur = parent.parentId
+    }
+    map.set(t.id, depth)
+  }
+  return map
 }
 
 function summarizeTasks(tasks: GanttTask[]) {
@@ -388,6 +413,8 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
     setCell(ws, headerRow, c, h, c === 0 ? styleTableHeader : styleTableHeaderCenter)
   })
 
+  const depthMap = buildDepthMap(tasks)
+
   if (!tasks.length) {
     const r = headerRow + 1
     setCell(ws, r, 0, '(no tasks to export)', styleBodyMuted)
@@ -400,15 +427,25 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
     tasks.forEach((t, i) => {
       const r = headerRow + 1 + i
       const alt = i % 2 === 1
+      const depth = depthMap.get(t.id) ?? 0
+      const isSubtask = depth > 0
       const color = paletteFor(i).done
-      setCell(ws, r, 0, t.name.trim() || '(untitled)', {
-        ...bodyLeft(alt, true),
-        alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+      const namePrefix = isSubtask ? '↳ ' : ''
+      setCell(ws, r, 0, `${namePrefix}${t.name.trim() || '(untitled)'}`, {
+        font: {
+          name: 'Calibri',
+          sz: isSubtask ? 10 : 11,
+          bold: !isSubtask,
+          italic: isSubtask,
+          color: { rgb: isSubtask ? BRAND.textMuted : BRAND.textDark },
+        },
+        fill: { patternType: 'solid', fgColor: { rgb: alt ? BRAND.altRow : BRAND.white } },
+        alignment: { vertical: 'center', horizontal: 'left', indent: 1 + depth * 2 },
         border: {
           top: thin,
           bottom: thin,
           right: thin,
-          left: { style: 'thick', color: { rgb: color } },
+          left: { style: isSubtask ? 'thin' : 'thick', color: { rgb: color } },
         },
       })
       setCell(ws, r, 1, t.start, bodyCenter(alt))
@@ -563,6 +600,7 @@ function buildGanttSheet(
   const rangeStartMs = parseISOToUtcMs(visibleRange.start)
   const rangeEndMs = parseISOToUtcMs(visibleRange.end)
   const dayMs = 86_400_000
+  const depthMap = buildDepthMap(tasks)
 
   if (!tasks.length) {
     const r = taskStartRow
@@ -583,8 +621,10 @@ function buildGanttSheet(
     tasks.forEach((t, i) => {
       const r = taskStartRow + i
       const alt = i % 2 === 1
+      const depth = depthMap.get(t.id) ?? 0
       const colors = paletteFor(i)
-      setCell(ws, r, 0, t.name.trim() || '(untitled)', ganttTaskNameCell(alt, colors.done))
+      const namePrefix = depth > 0 ? '↳ ' : ''
+      setCell(ws, r, 0, `${namePrefix}${t.name.trim() || '(untitled)'}`, ganttTaskNameCell(alt, colors.done, depth))
 
       const taskStartMs = parseISOToUtcMs(t.start)
       const taskEndMs = parseISOToUtcMs(t.end)
