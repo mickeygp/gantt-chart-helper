@@ -257,6 +257,11 @@
   width: 4rem;
 }
 
+.gantt-input--task-name {
+  --task-indent-level: 0;
+  padding-left: calc(10px + (var(--task-indent-level) * 18px));
+}
+
 .gantt-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -423,7 +428,9 @@
 }
 
 .gantt-chart__task-name {
+  --task-indent-level: 0;
   padding: 12px 14px;
+  padding-left: calc(14px + (var(--task-indent-level) * 18px));
   font-size: 14px;
   font-weight: 500;
   color: var(--text-h);
@@ -433,6 +440,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.gantt-chart__task-name--dragging {
+  opacity: 0.72;
+}
+
+.gantt-chart__task-name--drop-target {
+  box-shadow: inset 0 -3px 0 0 var(--accent);
 }
 
 .gantt-chart__track {
@@ -450,6 +465,10 @@
   );
 }
 
+.gantt-chart__track--drop-target {
+  box-shadow: inset 0 -3px 0 0 var(--accent);
+}
+
 .gantt-chart__bar {
   --day: var(--gantt-day-px, 26px);
   position: absolute;
@@ -462,6 +481,27 @@
   box-sizing: border-box;
   overflow: hidden;
   min-width: 4px;
+  cursor: grab;
+}
+
+.gantt-chart__bar-resize {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.gantt-chart__bar-resize--start {
+  left: -2px;
+}
+
+.gantt-chart__bar-resize--end {
+  right: -2px;
 }
 
 .gantt-chart__bar-fill {
@@ -473,6 +513,11 @@
     color-mix(in srgb, var(--accent) 70%, transparent)
   );
   border-radius: 5px 0 0 5px;
+}
+
+.gantt-chart__bar--dragging {
+  cursor: grabbing;
+  opacity: 0.9;
 }
 
 /* Excel-style sheet tabs */

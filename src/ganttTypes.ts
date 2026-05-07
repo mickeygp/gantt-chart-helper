@@ -1,6 +1,8 @@
 export type GanttTask = {
   id: string
   name: string
+  /** Optional parent task id for subtasks. */
+  parentId?: string
   /** YYYY-MM-DD */
   start: string
   /** YYYY-MM-DD */
@@ -13,6 +15,7 @@ export function createTask(partial?: Partial<Omit<GanttTask, 'id'>>): GanttTask 
   return {
     id: crypto.randomUUID(),
     name: partial?.name ?? 'New task',
+    parentId: partial?.parentId,
     start: partial?.start ?? todayISO(),
     end: partial?.end ?? partial?.start ?? todayISO(),
     progress: partial?.progress ?? 0,

@@ -1,8 +1,11 @@
 import {
+  useCallback,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type SetStateAction,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -21,6 +24,7 @@ import './GanttBuilder.css'
 
 const DAY_PX = 26
 const DND_TASK_MIME = 'application/x-gantt-task-id'
+type BarDragMode = 'move' | 'resize-start' | 'resize-end'
 
 function reorderTasks(list: GanttTask[], activeId: string, overId: string): GanttTask[] {
   if (activeId === overId) return list
@@ -41,6 +45,45 @@ function moveTaskToEnd(list: GanttTask[], activeId: string): GanttTask[] {
   const [moved] = next.splice(fromIdx, 1)
   next.push(moved)
   return next
+}
+
+function countAncestorDepth(tasks: GanttTask[], task: GanttTask): number {
+  const byId = new Map(tasks.map((x) => [x.id, x]))
+  let depth = 0
+  let curParentId = task.parentId
+  while (curParentId) {
+    const parent = byId.get(curParentId)
+    if (!parent) break
+    depth += 1
+    if (depth > 12) break
+    curParentId = parent.parentId
+  }
+  return depth
+}
+
+function collectDescendantIds(tasks: GanttTask[], parentId: string): Set<string> {
+  const descendantIds = new Set<string>()
+  const queue = [parentId]
+  while (queue.length > 0) {
+    const currentId = queue.shift()
+    if (!currentId) continue
+    for (const t of tasks) {
+      if (t.parentId !== currentId) continue
+      if (descendantIds.has(t.id)) continue
+      descendantIds.add(t.id)
+      queue.push(t.id)
+    }
+  }
+  return descendantIds
+}
+
+function findLastDescendantIndex(tasks: GanttTask[], taskId: string): number {
+  const descendantIds = collectDescendantIds(tasks, taskId)
+  let lastIndex = tasks.findIndex((t) => t.id === taskId)
+  for (let i = lastIndex + 1; i < tasks.length; i += 1) {
+    if (descendantIds.has(tasks[i].id)) lastIndex = i
+  }
+  return lastIndex
 }
 
 function readDragTaskId(dataTransfer: DataTransfer): string | null {
@@ -137,6 +180,14 @@ export default function GanttBuilder({ initialTasks }: Props) {
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null)
   const [dragOverFooter, setDragOverFooter] = useState(false)
   const [includeDayColumnsInExport, setIncludeDayColumnsInExport] = useState(true)
+  const [draggingBarTaskId, setDraggingBarTaskId] = useState<string | null>(null)
+  const dragBarStateRef = useRef<{
+    taskId: string
+    mode: BarDragMode
+    startClientX: number
+    originalStart: string
+    originalEnd: string
+  } | null>(null)
 
   function endDragSession() {
     setDraggingTaskId(null)
@@ -241,33 +292,61 @@ export default function GanttBuilder({ initialTasks }: Props) {
     }))
   }
 
-  function setTasksState(updater: SetStateAction<GanttTask[]>) {
-    const id = activeSheetId
-    setWorkbook((w) => ({
-      ...w,
-      sheets: w.sheets.map((s) => {
-        if (s.id !== id) return s
-        const next = typeof updater === 'function' ? updater(s.tasks) : updater
-        return { ...s, tasks: next }
-      }),
-    }))
-  }
+  const setTasksState = useCallback(
+    (updater: SetStateAction<GanttTask[]>) => {
+      const id = activeSheetId
+      setWorkbook((w) => ({
+        ...w,
+        sheets: w.sheets.map((s) => {
+          if (s.id !== id) return s
+          const next = typeof updater === 'function' ? updater(s.tasks) : updater
+          return { ...s, tasks: next }
+        }),
+      }))
+    },
+    [activeSheetId],
+  )
 
-  function updateTask(taskId: string, patch: Partial<GanttTask>) {
-    setTasksState((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t
-        const next = { ...t, ...patch }
-        if (parseISOToUtcMs(next.end) < parseISOToUtcMs(next.start)) {
-          next.end = next.start
-        }
-        return next
-      }),
-    )
-  }
+  const updateTask = useCallback(
+    (taskId: string, patch: Partial<GanttTask>) => {
+      setTasksState((prev) =>
+        prev.map((t) => {
+          if (t.id !== taskId) return t
+          const next = { ...t, ...patch }
+          if (parseISOToUtcMs(next.end) < parseISOToUtcMs(next.start)) {
+            next.end = next.start
+          }
+          return next
+        }),
+      )
+    },
+    [setTasksState],
+  )
 
   function removeTask(taskId: string) {
-    setTasksState((prev) => prev.filter((t) => t.id !== taskId))
+    setTasksState((prev) => {
+      const descendants = collectDescendantIds(prev, taskId)
+      return prev.filter((t) => t.id !== taskId && !descendants.has(t.id))
+    })
+  }
+
+  function addSubtask(parentTask: GanttTask) {
+    setTasksState((prev) => {
+      if (!prev.some((x) => x.id === parentTask.id)) return prev
+      const insertAfter = findLastDescendantIndex(prev, parentTask.id)
+      const newTask = createTask({
+        name: parentTask.name.trim()
+          ? `${parentTask.name.trim()} - subtask`
+          : 'New subtask',
+        parentId: parentTask.id,
+        start: parentTask.start,
+        end: parentTask.end,
+        progress: 0,
+      })
+      const next = [...prev]
+      next.splice(insertAfter + 1, 0, newTask)
+      return next
+    })
   }
 
   function applyVisibleRangeShortcut(range: { start: string; end: string }) {
@@ -275,6 +354,69 @@ export default function GanttBuilder({ initialTasks }: Props) {
       viewRangeOverride: range,
     })
   }
+
+  function beginBarDrag(
+    e: ReactPointerEvent<HTMLElement>,
+    task: GanttTask,
+    mode: BarDragMode,
+  ) {
+    if (e.button !== 0) return
+    dragBarStateRef.current = {
+      taskId: task.id,
+      mode,
+      startClientX: e.clientX,
+      originalStart: task.start,
+      originalEnd: task.end,
+    }
+    setDraggingBarTaskId(task.id)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    function onPointerMove(e: PointerEvent) {
+      const drag = dragBarStateRef.current
+      if (!drag) return
+      const deltaX = e.clientX - drag.startClientX
+      const dayShift = Math.round(deltaX / DAY_PX)
+      if (drag.mode === 'move') {
+        updateTask(drag.taskId, {
+          start: addDaysISO(drag.originalStart, dayShift),
+          end: addDaysISO(drag.originalEnd, dayShift),
+        })
+        return
+      }
+      if (drag.mode === 'resize-start') {
+        const candidateStart = addDaysISO(drag.originalStart, dayShift)
+        updateTask(drag.taskId, {
+          start:
+            parseISOToUtcMs(candidateStart) > parseISOToUtcMs(drag.originalEnd)
+              ? drag.originalEnd
+              : candidateStart,
+        })
+        return
+      }
+      const candidateEnd = addDaysISO(drag.originalEnd, dayShift)
+      updateTask(drag.taskId, {
+        end:
+          parseISOToUtcMs(candidateEnd) < parseISOToUtcMs(drag.originalStart)
+            ? drag.originalStart
+            : candidateEnd,
+      })
+    }
+
+    function onPointerUp() {
+      dragBarStateRef.current = null
+      setDraggingBarTaskId(null)
+    }
+
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [updateTask])
 
   function activateSheet(id: string) {
     setRenamingSheetId(null)
@@ -444,6 +586,9 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 <th scope="col">Days</th>
                 <th scope="col">Progress</th>
                 <th scope="col">
+                  <span className="visually-hidden">Add subtask</span>
+                </th>
+                <th scope="col">
                   <span className="visually-hidden">Remove</span>
                 </th>
               </tr>
@@ -492,8 +637,13 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   </td>
                   <td>
                     <input
-                      className="gantt-input"
+                      className="gantt-input gantt-input--task-name"
                       aria-label={`Name for ${t.name}`}
+                      style={
+                        {
+                          '--task-indent-level': String(countAncestorDepth(tasks, t)),
+                        } as CSSProperties
+                      }
                       value={t.name}
                       onChange={(e) => updateTask(t.id, { name: e.target.value })}
                     />
@@ -552,6 +702,16 @@ export default function GanttBuilder({ initialTasks }: Props) {
                     <button
                       type="button"
                       className="gantt-btn gantt-btn--ghost"
+                      aria-label={`Add subtask under ${t.name}`}
+                      onClick={() => addSubtask(t)}
+                    >
+                      + Subtask
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="gantt-btn gantt-btn--ghost"
                       aria-label={`Remove ${t.name}`}
                       onClick={() => removeTask(t.id)}
                     >
@@ -586,7 +746,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   endDragSession()
                 }}
               >
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="gantt-table__foot-inner">
                     <button
                       type="button"
@@ -727,9 +887,39 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   {tasks.map((t) => (
                     <div
                       key={t.id}
-                      className="gantt-chart__task-name"
+                      className={`gantt-chart__task-name${draggingTaskId === t.id ? ' gantt-chart__task-name--dragging' : ''}${dragOverTaskId === t.id ? ' gantt-chart__task-name--drop-target' : ''}`}
                       title={t.name}
+                      style={
+                        {
+                          '--task-indent-level': String(countAncestorDepth(tasks, t)),
+                        } as CSSProperties
+                      }
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(DND_TASK_MIME, t.id)
+                        e.dataTransfer.setData('text/plain', t.id)
+                        e.dataTransfer.effectAllowed = 'move'
+                        setDraggingTaskId(t.id)
+                      }}
+                      onDragEnd={endDragSession}
+                      onDragOver={(e) => {
+                        if (!draggingTaskId) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        setDragOverTaskId(t.id)
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const dragId = readDragTaskId(e.dataTransfer)
+                        if (!dragId || dragId === t.id) {
+                          endDragSession()
+                          return
+                        }
+                        setTasksState((prev) => reorderTasks(prev, dragId, t.id))
+                        endDragSession()
+                      }}
                     >
+                      {t.parentId ? '↳ ' : ''}
                       {t.name.trim() || 'Untitled'}
                     </div>
                   ))}
@@ -774,20 +964,55 @@ export default function GanttBuilder({ initialTasks }: Props) {
                     return (
                       <div
                         key={t.id}
-                        className="gantt-chart__track"
+                        className={`gantt-chart__track${dragOverTaskId === t.id ? ' gantt-chart__track--drop-target' : ''}`}
                         style={{ width: totalDays * DAY_PX }}
+                        onDragOver={(e) => {
+                          if (!draggingTaskId) return
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                          setDragOverTaskId(t.id)
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const dragId = readDragTaskId(e.dataTransfer)
+                          if (!dragId || dragId === t.id) {
+                            endDragSession()
+                            return
+                          }
+                          setTasksState((prev) => reorderTasks(prev, dragId, t.id))
+                          endDragSession()
+                        }}
                       >
                         {intersects ? (
                           <div
-                            className="gantt-chart__bar"
+                            className={`gantt-chart__bar${draggingBarTaskId === t.id ? ' gantt-chart__bar--dragging' : ''}`}
                             style={{
                               left: leftPx,
                               width: widthPx,
                             }}
+                            onPointerDown={(e) => beginBarDrag(e, t, 'move')}
                           >
+                            <button
+                              type="button"
+                              className="gantt-chart__bar-resize gantt-chart__bar-resize--start"
+                              aria-label={`Resize start date for ${t.name.trim() || 'Untitled task'}`}
+                              onPointerDown={(e) => {
+                                e.stopPropagation()
+                                beginBarDrag(e, t, 'resize-start')
+                              }}
+                            />
                             <span
                               className="gantt-chart__bar-fill"
                               style={{ width: `${t.progress}%` }}
+                            />
+                            <button
+                              type="button"
+                              className="gantt-chart__bar-resize gantt-chart__bar-resize--end"
+                              aria-label={`Resize end date for ${t.name.trim() || 'Untitled task'}`}
+                              onPointerDown={(e) => {
+                                e.stopPropagation()
+                                beginBarDrag(e, t, 'resize-end')
+                              }}
                             />
                           </div>
                         ) : null}
