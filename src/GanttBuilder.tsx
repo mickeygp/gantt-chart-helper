@@ -43,23 +43,43 @@ function taskColor(idx: number): string {
 
 function reorderTasks(list: GanttTask[], activeId: string, overId: string): GanttTask[] {
   if (activeId === overId) return list
+  const activeTask = list.find((x) => x.id === activeId)
+  if (!activeTask) return list
   const fromIdx = list.findIndex((x) => x.id === activeId)
   const toIdx = list.findIndex((x) => x.id === overId)
   if (fromIdx === -1 || toIdx === -1) return list
-  const next = [...list]
-  const [moved] = next.splice(fromIdx, 1)
-  const insertBefore = next.findIndex((x) => x.id === overId)
-  next.splice(insertBefore, 0, moved)
-  return next
+
+  // Subtasks must stay within their parent's subtree
+  if (activeTask.parentId) {
+    const parentIdx = list.findIndex((x) => x.id === activeTask.parentId)
+    if (parentIdx === -1) return list
+    const lastDescIdx = findLastDescendantIndex(list, activeTask.parentId)
+    if (toIdx <= parentIdx || toIdx > lastDescIdx) return list
+  }
+
+  // Collect the block: active task + all its descendants (keeps children together)
+  const descendantIds = collectDescendantIds(list, activeId)
+  const blockIds = new Set([activeId, ...descendantIds])
+  if (blockIds.has(overId)) return list
+
+  const block = list.filter((t) => blockIds.has(t.id))
+  const remaining = list.filter((t) => !blockIds.has(t.id))
+  const insertAt = remaining.findIndex((x) => x.id === overId)
+  if (insertAt === -1) return [...remaining, ...block]
+  remaining.splice(insertAt, 0, ...block)
+  return remaining
 }
 
 function moveTaskToEnd(list: GanttTask[], activeId: string): GanttTask[] {
-  const fromIdx = list.findIndex((x) => x.id === activeId)
-  if (fromIdx === -1) return list
-  const next = [...list]
-  const [moved] = next.splice(fromIdx, 1)
-  next.push(moved)
-  return next
+  const activeTask = list.find((x) => x.id === activeId)
+  if (!activeTask) return list
+  // Subtasks must not leave their parent's group
+  if (activeTask.parentId) return list
+  const descendantIds = collectDescendantIds(list, activeId)
+  const blockIds = new Set([activeId, ...descendantIds])
+  const block = list.filter((t) => blockIds.has(t.id))
+  const remaining = list.filter((t) => !blockIds.has(t.id))
+  return [...remaining, ...block]
 }
 
 function countAncestorDepth(tasks: GanttTask[], task: GanttTask): number {
@@ -174,7 +194,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null)
   const [dragOverFooter, setDragOverFooter] = useState(false)
-  const [includeDayColumnsInExport, setIncludeDayColumnsInExport] = useState(true)
+  const [includeDayColumnsInExport, setIncludeDayColumnsInExport] = useState(false)
   const [draggingBarTaskId, setDraggingBarTaskId] = useState<string | null>(null)
   const dragBarStateRef = useRef<{
     taskId: string
@@ -585,9 +605,6 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   <th scope="col">Days</th>
                   <th scope="col">Progress</th>
                   <th scope="col">
-                    <span className="visually-hidden">Add subtask</span>
-                  </th>
-                  <th scope="col">
                     <span className="visually-hidden">Remove</span>
                   </th>
                 </tr>
@@ -657,6 +674,15 @@ export default function GanttBuilder({ initialTasks }: Props) {
                             value={t.name}
                             onChange={(e) => updateTask(t.id, { name: e.target.value })}
                           />
+                          <button
+                            type="button"
+                            className="gantt-btn gantt-btn--subtask gantt-btn--subtask-inline"
+                            aria-label={`Add subtask under ${t.name}`}
+                            title="Add subtask"
+                            onClick={() => addSubtask(t)}
+                          >
+                            + Sub
+                          </button>
                         </div>
                       </td>
                       <td>
@@ -710,17 +736,6 @@ export default function GanttBuilder({ initialTasks }: Props) {
                       <td>
                         <button
                           type="button"
-                          className="gantt-btn gantt-btn--subtask"
-                          aria-label={`Add subtask under ${t.name}`}
-                          title="Add subtask"
-                          onClick={() => addSubtask(t)}
-                        >
-                          + Sub
-                        </button>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
                           className="gantt-btn gantt-btn--delete"
                           aria-label={`Remove ${t.name}`}
                           onClick={() => removeTask(t.id)}
@@ -754,7 +769,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                     endDragSession()
                   }}
                 >
-                  <td colSpan={8}>
+                  <td colSpan={7}>
                     <div className="gantt-table__foot-inner">
                       <button
                         type="button"
