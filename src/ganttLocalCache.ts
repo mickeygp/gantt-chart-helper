@@ -14,6 +14,7 @@ function isGanttTask(x: unknown): x is GanttTask {
   return (
     typeof o.id === 'string' &&
     typeof o.name === 'string' &&
+    (typeof o.parentId === 'undefined' || typeof o.parentId === 'string') &&
     typeof o.start === 'string' &&
     typeof o.end === 'string' &&
     ISO_DATE.test(o.start) &&
@@ -26,6 +27,7 @@ function isGanttTask(x: unknown): x is GanttTask {
 function normalizeTask(t: GanttTask): GanttTask {
   return {
     ...t,
+    parentId: typeof t.parentId === 'string' && t.parentId.length > 0 ? t.parentId : undefined,
     progress: Math.min(100, Math.max(0, Math.round(t.progress))),
   }
 }
