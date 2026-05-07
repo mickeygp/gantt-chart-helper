@@ -59,7 +59,17 @@ import './GanttBuilder.css'
 
 const DAY_PX = 26
 const FOOTER_DROP_ID = '__footer__'
+const TIMELINE_LABEL_PREFIX = 'tl-'
+const TIMELINE_TRACK_PREFIX = 'tltrack-'
 type BarDragMode = 'move' | 'resize-start' | 'resize-end'
+
+function timelineLabelId(taskId: string) { return TIMELINE_LABEL_PREFIX + taskId }
+function timelineTrackId(taskId: string) { return TIMELINE_TRACK_PREFIX + taskId }
+function normalizeTaskId(id: string): string {
+  if (id.startsWith(TIMELINE_TRACK_PREFIX)) return id.slice(TIMELINE_TRACK_PREFIX.length)
+  if (id.startsWith(TIMELINE_LABEL_PREFIX)) return id.slice(TIMELINE_LABEL_PREFIX.length)
+  return id
+}
 
 const TASK_COLORS = [
   '#6366f1', // indigo
@@ -318,6 +328,121 @@ function DroppableFooter({ setTasksState, isDragging }: DroppableFooterProps) {
   )
 }
 
+interface SortableTimelineTaskNameProps {
+  t: GanttTask
+  idx: number
+  tasks: GanttTask[]
+}
+
+function SortableTimelineTaskName({ t, idx, tasks }: SortableTimelineTaskNameProps) {
+  const { ref, handleRef, isDragging, isDropTarget } = useSortable({
+    id: timelineLabelId(t.id),
+    index: idx,
+  })
+  const depth = countAncestorDepth(tasks, t)
+  return (
+    <div
+      ref={ref as unknown as React.RefCallback<HTMLDivElement>}
+      className={`gantt-chart__task-name${isDragging ? ' gantt-chart__task-name--dragging' : ''}${isDropTarget ? ' gantt-chart__task-name--drop-target' : ''}`}
+      style={
+        {
+          '--task-color': taskColor(idx),
+          '--task-indent-level': String(depth),
+        } as CSSProperties
+      }
+      title={t.name}
+    >
+      <button
+        ref={handleRef as unknown as React.RefCallback<HTMLButtonElement>}
+        type="button"
+        className="gantt-drag-handle gantt-drag-handle--sm"
+        aria-label={`Drag to reorder: ${t.name.trim() || 'Untitled task'}`}
+        title="Drag to reorder"
+      >
+        <span className="gantt-drag-handle__glyph" aria-hidden="true">
+          <span className="gantt-drag-handle__dot" />
+          <span className="gantt-drag-handle__dot" />
+          <span className="gantt-drag-handle__dot" />
+          <span className="gantt-drag-handle__dot" />
+          <span className="gantt-drag-handle__dot" />
+          <span className="gantt-drag-handle__dot" />
+        </span>
+      </button>
+      <span className="gantt-chart__task-name-dot" aria-hidden="true" />
+      <span className="gantt-chart__task-name-text">
+        {depth > 0 ? '↳ ' : ''}{t.name.trim() || 'Untitled'}
+      </span>
+    </div>
+  )
+}
+
+interface DroppableTimelineTrackProps {
+  t: GanttTask
+  idx: number
+  draggingBarTaskId: string | null
+  beginBarDrag: (e: ReactPointerEvent<HTMLElement>, task: GanttTask, mode: BarDragMode) => void
+  totalDays: number
+  leftPx: number
+  widthPx: number
+  intersects: boolean
+}
+
+function DroppableTimelineTrack({
+  t,
+  idx,
+  draggingBarTaskId,
+  beginBarDrag,
+  totalDays,
+  leftPx,
+  widthPx,
+  intersects,
+}: DroppableTimelineTrackProps) {
+  const { ref, isDropTarget } = useDroppable({ id: timelineTrackId(t.id) })
+  return (
+    <div
+      ref={ref as unknown as React.RefCallback<HTMLDivElement>}
+      className={`gantt-chart__track${isDropTarget ? ' gantt-chart__track--drop-target' : ''}`}
+      style={
+        {
+          width: totalDays * DAY_PX,
+          '--task-color': taskColor(idx),
+        } as CSSProperties
+      }
+    >
+      {intersects ? (
+        <div
+          className={`gantt-chart__bar${draggingBarTaskId === t.id ? ' gantt-chart__bar--dragging' : ''}`}
+          style={{ left: leftPx, width: widthPx }}
+          onPointerDown={(e) => beginBarDrag(e, t, 'move')}
+        >
+          <button
+            type="button"
+            className="gantt-chart__bar-resize gantt-chart__bar-resize--start"
+            aria-label={`Resize start date for ${t.name.trim() || 'Untitled task'}`}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              beginBarDrag(e, t, 'resize-start')
+            }}
+          />
+          <span
+            className="gantt-chart__bar-fill"
+            style={{ width: `${t.progress}%` }}
+          />
+          <button
+            type="button"
+            className="gantt-chart__bar-resize gantt-chart__bar-resize--end"
+            aria-label={`Resize end date for ${t.name.trim() || 'Untitled task'}`}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              beginBarDrag(e, t, 'resize-end')
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function rangeForTasks(tasks: GanttTask[]): { start: string; end: string } | null {
   if (!tasks.length) return null
   let min = tasks[0].start
@@ -396,13 +521,17 @@ export default function GanttBuilder({ initialTasks }: Props) {
   function handleDragEnd({ operation }: DragEndEvent) {
     setIsRowDragging(false)
     if (operation.canceled) return
-    const sourceId = operation.source?.id as string | undefined
-    const targetId = operation.target?.id as string | undefined
-    if (!sourceId) return
-    if (targetId === FOOTER_DROP_ID) {
+    const rawSourceId = operation.source?.id as string | undefined
+    const rawTargetId = operation.target?.id as string | undefined
+    if (!rawSourceId) return
+    const sourceId = normalizeTaskId(rawSourceId)
+    if (rawTargetId === FOOTER_DROP_ID) {
       setTasksState((prev) => moveTaskToEnd(prev, sourceId))
-    } else if (targetId && targetId !== sourceId) {
-      setTasksState((prev) => reorderTasks(prev, sourceId, targetId))
+    } else if (rawTargetId) {
+      const targetId = normalizeTaskId(rawTargetId)
+      if (targetId !== sourceId) {
+        setTasksState((prev) => reorderTasks(prev, sourceId, targetId))
+      }
     }
   }
 
@@ -965,27 +1094,14 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 >
                   <div className="gantt-chart__label-col">
                     <div className="gantt-chart__label-header-spacer" aria-hidden="true" />
-                    {tasks.map((t, idx) => {
-                      const depth = countAncestorDepth(tasks, t)
-                      return (
-                        <div
-                          key={t.id}
-                          className="gantt-chart__task-name"
-                          style={
-                            {
-                              '--task-color': taskColor(idx),
-                              '--task-indent-level': String(depth),
-                            } as CSSProperties
-                          }
-                          title={t.name}
-                        >
-                          <span className="gantt-chart__task-name-dot" aria-hidden="true" />
-                          <span className="gantt-chart__task-name-text">
-                            {depth > 0 ? '↳ ' : ''}{t.name.trim() || 'Untitled'}
-                          </span>
-                        </div>
-                      )
-                    })}
+                    {tasks.map((t, idx) => (
+                      <SortableTimelineTaskName
+                        key={t.id}
+                        t={t}
+                        idx={idx}
+                        tasks={tasks}
+                      />
+                    ))}
                   </div>
                   <div
                     className="gantt-chart__timeline-col"
@@ -1025,47 +1141,17 @@ export default function GanttBuilder({ initialTasks }: Props) {
                       }
 
                       return (
-                        <div
+                        <DroppableTimelineTrack
                           key={t.id}
-                          className="gantt-chart__track"
-                          style={
-                            {
-                              width: totalDays * DAY_PX,
-                              '--task-color': taskColor(idx),
-                            } as CSSProperties
-                          }
-                        >
-                          {intersects ? (
-                            <div
-                              className={`gantt-chart__bar${draggingBarTaskId === t.id ? ' gantt-chart__bar--dragging' : ''}`}
-                              style={{ left: leftPx, width: widthPx }}
-                              onPointerDown={(e) => beginBarDrag(e, t, 'move')}
-                            >
-                              <button
-                                type="button"
-                                className="gantt-chart__bar-resize gantt-chart__bar-resize--start"
-                                aria-label={`Resize start date for ${t.name.trim() || 'Untitled task'}`}
-                                onPointerDown={(e) => {
-                                  e.stopPropagation()
-                                  beginBarDrag(e, t, 'resize-start')
-                                }}
-                              />
-                              <span
-                                className="gantt-chart__bar-fill"
-                                style={{ width: `${t.progress}%` }}
-                              />
-                              <button
-                                type="button"
-                                className="gantt-chart__bar-resize gantt-chart__bar-resize--end"
-                                aria-label={`Resize end date for ${t.name.trim() || 'Untitled task'}`}
-                                onPointerDown={(e) => {
-                                  e.stopPropagation()
-                                  beginBarDrag(e, t, 'resize-end')
-                                }}
-                              />
-                            </div>
-                          ) : null}
-                        </div>
+                          t={t}
+                          idx={idx}
+                          draggingBarTaskId={draggingBarTaskId}
+                          beginBarDrag={beginBarDrag}
+                          totalDays={totalDays}
+                          leftPx={leftPx}
+                          widthPx={widthPx}
+                          intersects={intersects}
+                        />
                       )
                     })}
                   </div>

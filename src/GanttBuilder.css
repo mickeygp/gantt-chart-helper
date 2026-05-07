@@ -423,6 +423,17 @@
   background: currentColor;
 }
 
+.gantt-drag-handle--sm {
+  padding: 3px 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.gantt-chart__task-name:hover .gantt-drag-handle--sm {
+  opacity: 1;
+}
+
 .gantt-table__task-row--dragging {
   opacity: 0.6;
 }
@@ -687,7 +698,7 @@ html.dark .gantt-btn--delete:hover {
 }
 
 .gantt-chart__task-name {
-  padding: 0 14px 0 calc(14px + var(--task-indent-level, 0) * 16px);
+  padding: 0 8px 0 calc(6px + var(--task-indent-level, 0) * 16px);
   font-size: 13px;
   font-weight: 500;
   color: var(--text-h);
@@ -699,9 +710,9 @@ html.dark .gantt-btn--delete:hover {
   align-items: center;
   height: 44px;
   box-sizing: border-box;
-  gap: 8px;
-  cursor: grab;
+  gap: 6px;
   user-select: none;
+  cursor: default;
 }
 
 .gantt-chart__task-name-dot {
