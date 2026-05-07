@@ -9,6 +9,39 @@ import {
   useState,
 } from 'react'
 
+type Theme = 'light' | 'dark' | 'system'
+
+function useTheme(): [Theme, () => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = localStorage.getItem('gantt-theme') as Theme | null
+    return stored ?? 'system'
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') {
+      root.classList.add('dark')
+      root.classList.remove('light')
+    } else if (theme === 'light') {
+      root.classList.add('light')
+      root.classList.remove('dark')
+    } else {
+      root.classList.remove('dark', 'light')
+    }
+    if (theme === 'system') {
+      localStorage.removeItem('gantt-theme')
+    } else {
+      localStorage.setItem('gantt-theme', theme)
+    }
+  }, [theme])
+
+  const cycle = useCallback(() => {
+    setTheme((t) => (t === 'system' ? 'dark' : t === 'dark' ? 'light' : 'system'))
+  }, [])
+
+  return [theme, cycle]
+}
+
 import { exportGanttToXlsx } from './exportGanttXlsx'
 import { addDaysISO, daysInclusive, parseISOToUtcMs } from './ganttDates'
 import { buildMonthSpans, buildWeekSpans } from './ganttTimeline'
@@ -186,6 +219,7 @@ function getInitialWorkbook(initialTasks?: GanttTask[]): GanttWorkbookState {
 }
 
 export default function GanttBuilder({ initialTasks }: Props) {
+  const [theme, cycleTheme] = useTheme()
   const [workbook, setWorkbook] = useState<GanttWorkbookState>(() =>
     getInitialWorkbook(initialTasks),
   )
@@ -550,6 +584,36 @@ export default function GanttBuilder({ initialTasks }: Props) {
           </div>
 
           <div className="gantt-appbar__toolbar">
+            <button
+              type="button"
+              className="gantt-btn gantt-btn--ghost gantt-btn--theme"
+              onClick={cycleTheme}
+              aria-label={`Theme: ${theme}. Click to cycle`}
+              title={`Theme: ${theme}`}
+            >
+              {theme === 'dark' ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              ) : theme === 'light' ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="5" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" />
+                  <line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 2a10 10 0 0 1 0 20" />
+                </svg>
+              )}
+            </button>
             <select
               className="gantt-input gantt-input-select"
               style={{ fontSize: '13px', padding: '7px 28px 7px 10px' }}

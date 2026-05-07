@@ -548,10 +548,22 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .gantt-btn--delete:hover {
+  html:not(.light) .gantt-btn--delete:hover {
     background: rgba(239, 68, 68, 0.12);
     border-color: rgba(239, 68, 68, 0.3);
   }
+}
+
+html.dark .gantt-btn--delete:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* ─── Theme toggle button ───────────────────────────────── */
+
+.gantt-btn--theme {
+  padding: 7px 8px;
+  color: var(--text-muted);
 }
 
 /* ─── Chart ─────────────────────────────────────────────── */
