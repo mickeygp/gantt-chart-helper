@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from 'react'
+import { DragDropProvider, useDroppable, type DragEndEvent } from '@dnd-kit/react'
+import { useSortable } from '@dnd-kit/react/sortable'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -56,7 +58,7 @@ import { createTask, type GanttTask, todayISO } from './ganttTypes'
 import './GanttBuilder.css'
 
 const DAY_PX = 26
-const DND_TASK_MIME = 'application/x-gantt-task-id'
+const FOOTER_DROP_ID = '__footer__'
 type BarDragMode = 'move' | 'resize-start' | 'resize-end'
 
 const TASK_COLORS = [
@@ -154,11 +156,166 @@ function findLastDescendantIndex(tasks: GanttTask[], taskId: string): number {
   return lastIndex
 }
 
-function readDragTaskId(dataTransfer: DataTransfer): string | null {
-  const fromMime = dataTransfer.getData(DND_TASK_MIME)
-  if (fromMime) return fromMime
-  const plain = dataTransfer.getData('text/plain')
-  return plain.trim() || null
+// ── dnd-kit sub-components ──────────────────────────────────────────────────
+
+interface SortableTaskRowProps {
+  t: GanttTask
+  idx: number
+  tasks: GanttTask[]
+  updateTask: (id: string, patch: Partial<GanttTask>) => void
+  removeTask: (id: string) => void
+  addSubtask: (task: GanttTask) => void
+  setTasksState: (updater: SetStateAction<GanttTask[]>) => void
+}
+
+function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: SortableTaskRowProps) {
+  const { ref, handleRef, isDragging, isDropTarget } = useSortable({ id: t.id, index: idx })
+  const depth = countAncestorDepth(tasks, t)
+  const color = taskColor(idx)
+  return (
+    <tr
+      ref={ref as unknown as React.RefCallback<HTMLTableRowElement>}
+      className={`gantt-table__task-row${isDragging ? ' gantt-table__task-row--dragging' : ''}${isDropTarget ? ' gantt-table__task-row--drop-target' : ''}`}
+      style={{ '--task-color': color } as CSSProperties}
+    >
+      <td className="gantt-table__cell-drag">
+        <button
+          ref={handleRef as unknown as React.RefCallback<HTMLButtonElement>}
+          type="button"
+          className="gantt-drag-handle"
+          aria-label={`Drag to reorder row: ${t.name.trim() || 'Untitled task'}`}
+          title="Drag to reorder"
+        >
+          <span className="gantt-drag-handle__glyph" aria-hidden="true">
+            <span className="gantt-drag-handle__dot" />
+            <span className="gantt-drag-handle__dot" />
+            <span className="gantt-drag-handle__dot" />
+            <span className="gantt-drag-handle__dot" />
+            <span className="gantt-drag-handle__dot" />
+            <span className="gantt-drag-handle__dot" />
+          </span>
+        </button>
+      </td>
+      <td>
+        <div
+          className="gantt-task-name-cell"
+          style={{ '--task-indent-level': String(depth) } as CSSProperties}
+        >
+          {depth === 0
+            ? <span className="gantt-task-swatch" aria-hidden="true" />
+            : <span className="gantt-subtask-indicator" aria-hidden="true">↳</span>
+          }
+          <input
+            className="gantt-input gantt-input--task-name"
+            aria-label={`Name for ${t.name}`}
+            value={t.name}
+            onChange={(e) => updateTask(t.id, { name: e.target.value })}
+          />
+          <button
+            type="button"
+            className="gantt-btn gantt-btn--subtask gantt-btn--subtask-inline"
+            aria-label={`Add subtask under ${t.name}`}
+            title="Add subtask"
+            onClick={() => addSubtask(t)}
+          >
+            + Sub
+          </button>
+        </div>
+      </td>
+      <td>
+        <input
+          className="gantt-input gantt-input--date"
+          type="date"
+          value={t.start}
+          onChange={(e) => {
+            const start = e.target.value
+            updateTask(t.id, {
+              start,
+              end: parseISOToUtcMs(t.end) < parseISOToUtcMs(start) ? start : t.end,
+            })
+          }}
+        />
+      </td>
+      <td>
+        <input
+          className="gantt-input gantt-input--date"
+          type="date"
+          value={t.end}
+          min={t.start}
+          onChange={(e) => updateTask(t.id, { end: e.target.value })}
+        />
+      </td>
+      <td className="gantt-num">{daysInclusive(t.start, t.end)}</td>
+      <td>
+        <div className="gantt-progress-cell">
+          <input
+            className="gantt-input gantt-input--narrow"
+            type="number"
+            min={0}
+            max={100}
+            aria-label={`Progress for ${t.name}`}
+            value={t.progress}
+            onChange={(e) =>
+              updateTask(t.id, {
+                progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+              })
+            }
+          />
+          <span className="gantt-percent">%</span>
+          <div className="gantt-progress-track" aria-hidden="true">
+            <div
+              className="gantt-progress-track__fill"
+              style={{ width: `${t.progress}%` }}
+            />
+          </div>
+        </div>
+      </td>
+      <td>
+        <button
+          type="button"
+          className="gantt-btn gantt-btn--delete"
+          aria-label={`Remove ${t.name}`}
+          onClick={() => removeTask(t.id)}
+        >
+          ✕
+        </button>
+      </td>
+    </tr>
+  )
+}
+
+interface DroppableFooterProps {
+  setTasksState: (updater: SetStateAction<GanttTask[]>) => void
+  isDragging: boolean
+}
+
+function DroppableFooter({ setTasksState, isDragging }: DroppableFooterProps) {
+  const { ref, isDropTarget } = useDroppable({ id: FOOTER_DROP_ID })
+  return (
+    <tfoot>
+      <tr
+        ref={ref as unknown as React.RefCallback<HTMLTableRowElement>}
+        className={`gantt-table__foot-row${isDropTarget ? ' gantt-table__foot-row--drop' : ''}`}
+      >
+        <td colSpan={7}>
+          <div className="gantt-table__foot-inner">
+            <button
+              type="button"
+              className="gantt-btn gantt-btn--secondary gantt-table__add-btn"
+              onClick={() => setTasksState((prev) => [...prev, createTask()])}
+            >
+              + Add task
+            </button>
+            {isDragging ? (
+              <span className="gantt-table__drop-hint" aria-live="polite">
+                Drop here to move to bottom
+              </span>
+            ) : null}
+          </div>
+        </td>
+      </tr>
+    </tfoot>
+  )
 }
 
 function rangeForTasks(tasks: GanttTask[]): { start: string; end: string } | null {
@@ -225,11 +382,9 @@ export default function GanttBuilder({ initialTasks }: Props) {
   )
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
-  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null)
-  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null)
-  const [dragOverFooter, setDragOverFooter] = useState(false)
   const [includeDayColumnsInExport, setIncludeDayColumnsInExport] = useState(false)
   const [draggingBarTaskId, setDraggingBarTaskId] = useState<string | null>(null)
+  const [isRowDragging, setIsRowDragging] = useState(false)
   const dragBarStateRef = useRef<{
     taskId: string
     mode: BarDragMode
@@ -238,10 +393,17 @@ export default function GanttBuilder({ initialTasks }: Props) {
     originalEnd: string
   } | null>(null)
 
-  function endDragSession() {
-    setDraggingTaskId(null)
-    setDragOverTaskId(null)
-    setDragOverFooter(false)
+  function handleDragEnd({ operation }: DragEndEvent) {
+    setIsRowDragging(false)
+    if (operation.canceled) return
+    const sourceId = operation.source?.id as string | undefined
+    const targetId = operation.target?.id as string | undefined
+    if (!sourceId) return
+    if (targetId === FOOTER_DROP_ID) {
+      setTasksState((prev) => moveTaskToEnd(prev, sourceId))
+    } else if (targetId && targetId !== sourceId) {
+      setTasksState((prev) => reorderTasks(prev, sourceId, targetId))
+    }
   }
 
   const { sheets, activeSheetId } = workbook
@@ -554,6 +716,10 @@ export default function GanttBuilder({ initialTasks }: Props) {
     )
 
   return (
+    <DragDropProvider
+      onDragStart={() => setIsRowDragging(true)}
+      onDragEnd={handleDragEnd}
+    >
     <div className="gantt-builder">
       {/* ── Sticky app bar ── */}
       <header className="gantt-appbar">
@@ -674,183 +840,20 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {tasks.map((t, idx) => {
-                  const color = taskColor(idx)
-                  const depth = countAncestorDepth(tasks, t)
-                  return (
-                    <tr
-                      key={t.id}
-                      className={`gantt-table__task-row${draggingTaskId === t.id ? ' gantt-table__task-row--dragging' : ''}${dragOverTaskId === t.id ? ' gantt-table__task-row--drop-target' : ''}`}
-                      style={{ '--task-color': color } as CSSProperties}
-                      onDragOver={(e) => {
-                        if (!draggingTaskId) return
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = 'move'
-                        setDragOverTaskId(t.id)
-                        setDragOverFooter(false)
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        const dragId = readDragTaskId(e.dataTransfer)
-                        if (!dragId || dragId === t.id) { endDragSession(); return }
-                        setTasksState((prev) => reorderTasks(prev, dragId, t.id))
-                        endDragSession()
-                      }}
-                    >
-                      <td className="gantt-table__cell-drag">
-                        <button
-                          type="button"
-                          className="gantt-drag-handle"
-                          draggable
-                          aria-label={`Drag to reorder row: ${t.name.trim() || 'Untitled task'}`}
-                          title="Drag to reorder"
-                          onDragStart={(e) => {
-                            e.stopPropagation()
-                            e.dataTransfer.setData(DND_TASK_MIME, t.id)
-                            e.dataTransfer.setData('text/plain', t.id)
-                            e.dataTransfer.effectAllowed = 'move'
-                            setDraggingTaskId(t.id)
-                          }}
-                          onDragEnd={endDragSession}
-                        >
-                          <span className="gantt-drag-handle__glyph" aria-hidden="true">
-                            <span className="gantt-drag-handle__dot" />
-                            <span className="gantt-drag-handle__dot" />
-                            <span className="gantt-drag-handle__dot" />
-                            <span className="gantt-drag-handle__dot" />
-                            <span className="gantt-drag-handle__dot" />
-                            <span className="gantt-drag-handle__dot" />
-                          </span>
-                        </button>
-                      </td>
-                      <td>
-                        <div
-                          className="gantt-task-name-cell"
-                          style={{ '--task-indent-level': String(depth) } as CSSProperties}
-                        >
-                          {depth === 0
-                            ? <span className="gantt-task-swatch" aria-hidden="true" />
-                            : <span className="gantt-subtask-indicator" aria-hidden="true">↳</span>
-                          }
-                          <input
-                            className="gantt-input gantt-input--task-name"
-                            aria-label={`Name for ${t.name}`}
-                            value={t.name}
-                            onChange={(e) => updateTask(t.id, { name: e.target.value })}
-                          />
-                          <button
-                            type="button"
-                            className="gantt-btn gantt-btn--subtask gantt-btn--subtask-inline"
-                            aria-label={`Add subtask under ${t.name}`}
-                            title="Add subtask"
-                            onClick={() => addSubtask(t)}
-                          >
-                            + Sub
-                          </button>
-                        </div>
-                      </td>
-                      <td>
-                        <input
-                          className="gantt-input gantt-input--date"
-                          type="date"
-                          value={t.start}
-                          onChange={(e) => {
-                            const start = e.target.value
-                            updateTask(t.id, {
-                              start,
-                              end: parseISOToUtcMs(t.end) < parseISOToUtcMs(start) ? start : t.end,
-                            })
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="gantt-input gantt-input--date"
-                          type="date"
-                          value={t.end}
-                          min={t.start}
-                          onChange={(e) => updateTask(t.id, { end: e.target.value })}
-                        />
-                      </td>
-                      <td className="gantt-num">{daysInclusive(t.start, t.end)}</td>
-                      <td>
-                        <div className="gantt-progress-cell">
-                          <input
-                            className="gantt-input gantt-input--narrow"
-                            type="number"
-                            min={0}
-                            max={100}
-                            aria-label={`Progress for ${t.name}`}
-                            value={t.progress}
-                            onChange={(e) =>
-                              updateTask(t.id, {
-                                progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
-                              })
-                            }
-                          />
-                          <span className="gantt-percent">%</span>
-                          <div className="gantt-progress-track" aria-hidden="true">
-                            <div
-                              className="gantt-progress-track__fill"
-                              style={{ width: `${t.progress}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="gantt-btn gantt-btn--delete"
-                          aria-label={`Remove ${t.name}`}
-                          onClick={() => removeTask(t.id)}
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {tasks.map((t, idx) => (
+                  <SortableTaskRow
+                    key={t.id}
+                    t={t}
+                    idx={idx}
+                    tasks={tasks}
+                    updateTask={updateTask}
+                    removeTask={removeTask}
+                    addSubtask={addSubtask}
+                    setTasksState={setTasksState}
+                  />
+                ))}
               </tbody>
-              <tfoot>
-                <tr
-                  className={`gantt-table__foot-row${dragOverFooter ? ' gantt-table__foot-row--drop' : ''}`}
-                  onDragOver={(e) => {
-                    if (!draggingTaskId) return
-                    e.preventDefault()
-                    e.dataTransfer.dropEffect = 'move'
-                    setDragOverFooter(true)
-                    setDragOverTaskId(null)
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node))
-                      setDragOverFooter(false)
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    const dragId = readDragTaskId(e.dataTransfer)
-                    if (!dragId) { endDragSession(); return }
-                    setTasksState((prev) => moveTaskToEnd(prev, dragId))
-                    endDragSession()
-                  }}
-                >
-                  <td colSpan={7}>
-                    <div className="gantt-table__foot-inner">
-                      <button
-                        type="button"
-                        className="gantt-btn gantt-btn--secondary gantt-table__add-btn"
-                        onClick={() => setTasksState((prev) => [...prev, createTask()])}
-                      >
-                        + Add task
-                      </button>
-                      {draggingTaskId ? (
-                        <span className="gantt-table__drop-hint" aria-live="polite">
-                          Drop here to move to bottom
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              </tfoot>
+              <DroppableFooter setTasksState={setTasksState} isDragging={isRowDragging} />
             </table>
           </section>
         </div>
@@ -967,7 +970,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                       return (
                         <div
                           key={t.id}
-                          className={`gantt-chart__task-name${draggingTaskId === t.id ? ' gantt-chart__task-name--dragging' : ''}${dragOverTaskId === t.id ? ' gantt-chart__task-name--drop-target' : ''}`}
+                          className="gantt-chart__task-name"
                           style={
                             {
                               '--task-color': taskColor(idx),
@@ -975,27 +978,6 @@ export default function GanttBuilder({ initialTasks }: Props) {
                             } as CSSProperties
                           }
                           title={t.name}
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData(DND_TASK_MIME, t.id)
-                            e.dataTransfer.setData('text/plain', t.id)
-                            e.dataTransfer.effectAllowed = 'move'
-                            setDraggingTaskId(t.id)
-                          }}
-                          onDragEnd={endDragSession}
-                          onDragOver={(e) => {
-                            if (!draggingTaskId) return
-                            e.preventDefault()
-                            e.dataTransfer.dropEffect = 'move'
-                            setDragOverTaskId(t.id)
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            const dragId = readDragTaskId(e.dataTransfer)
-                            if (!dragId || dragId === t.id) { endDragSession(); return }
-                            setTasksState((prev) => reorderTasks(prev, dragId, t.id))
-                            endDragSession()
-                          }}
                         >
                           <span className="gantt-chart__task-name-dot" aria-hidden="true" />
                           <span className="gantt-chart__task-name-text">
@@ -1045,26 +1027,13 @@ export default function GanttBuilder({ initialTasks }: Props) {
                       return (
                         <div
                           key={t.id}
-                          className={`gantt-chart__track${dragOverTaskId === t.id ? ' gantt-chart__track--drop-target' : ''}`}
+                          className="gantt-chart__track"
                           style={
                             {
                               width: totalDays * DAY_PX,
                               '--task-color': taskColor(idx),
                             } as CSSProperties
                           }
-                          onDragOver={(e) => {
-                            if (!draggingTaskId) return
-                            e.preventDefault()
-                            e.dataTransfer.dropEffect = 'move'
-                            setDragOverTaskId(t.id)
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            const dragId = readDragTaskId(e.dataTransfer)
-                            if (!dragId || dragId === t.id) { endDragSession(); return }
-                            setTasksState((prev) => reorderTasks(prev, dragId, t.id))
-                            endDragSession()
-                          }}
                         >
                           {intersects ? (
                             <div
@@ -1174,5 +1143,6 @@ export default function GanttBuilder({ initialTasks }: Props) {
         </div>
       </nav>
     </div>
+    </DragDropProvider>
   )
 }
