@@ -581,7 +581,7 @@ html.dark .gantt-btn--delete:hover {
 
 .gantt-chart {
   --gantt-header-month-h: 32px;
-  --gantt-header-week-h: 24px;
+  --gantt-header-week-h: 52px;
   border: 1.5px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
@@ -856,19 +856,18 @@ html.dark .gantt-btn--delete:hover {
 .gantt-chart__week-cell {
   box-sizing: border-box;
   min-width: 0;
-  padding: 0 4px;
+  padding: 4px 2px;
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
   color: var(--text-muted);
-  text-align: center;
   border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  overflow: hidden;
 }
 
 /* Today marker */

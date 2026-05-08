@@ -23,24 +23,19 @@ export function formatMonthYear(isoFirstDay: string): string {
   }).format(new Date(t))
 }
 
-/** Week stripe label: day range visible in the timeline slice. */
-export function formatWeekBandLabel(spanFirst: string, spanLast: string): string {
-  const a = parseISOToUtcMs(spanFirst)
-  const b = parseISOToUtcMs(spanLast)
-  if (Number.isNaN(a) || Number.isNaN(b)) return ''
-  const m0 = spanFirst.slice(5, 7)
-  const m1 = spanLast.slice(5, 7)
-  const d0 = Number(spanFirst.slice(8, 10))
-  const d1 = Number(spanLast.slice(8, 10))
-  if (m0 === m1 && spanFirst.slice(0, 7) === spanLast.slice(0, 7)) {
-    return `${d0}–${d1}`
-  }
-  const dm = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  })
-  return `${dm.format(new Date(a))} – ${dm.format(new Date(b))}`
+/** ISO 8601 week number for the Monday of a week (pass the Monday ISO date). */
+export function isoWeekNumber(mondayISO: string): number {
+  const ms = parseISOToUtcMs(mondayISO)
+  const d = new Date(ms)
+  // Thursday of this week — ISO weeks are defined by their Thursday
+  const thu = new Date(ms + (4 - (d.getUTCDay() || 7)) * 86_400_000)
+  const yearStart = Date.UTC(thu.getUTCFullYear(), 0, 1)
+  return Math.ceil(((thu.getTime() - yearStart) / 86_400_000 + 1) / 7)
+}
+
+/** "Week N" label for a week band, derived from the Monday of that week. */
+export function formatWeekLabel(mondayISO: string): string {
+  return `Week ${isoWeekNumber(mondayISO)}`
 }
 
 export function buildMonthSpans(days: string[]): TimelineSpan[] {
@@ -69,7 +64,7 @@ export function buildWeekSpans(days: string[]): TimelineSpan[] {
     let j = i + 1
     while (j < days.length && mondayOfWeek(days[j]) === wkMon) j++
     spans.push({
-      label: formatWeekBandLabel(days[i], days[j - 1]),
+      label: formatWeekLabel(wkMon),
       dayCount: j - i,
     })
     i = j
