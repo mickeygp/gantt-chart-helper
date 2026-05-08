@@ -510,6 +510,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
   const [includeDayColumnsInExport, setIncludeDayColumnsInExport] = useState(false)
   const [draggingBarTaskId, setDraggingBarTaskId] = useState<string | null>(null)
   const [isRowDragging, setIsRowDragging] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const dragBarStateRef = useRef<{
     taskId: string
     mode: BarDragMode
@@ -750,6 +751,84 @@ export default function GanttBuilder({ initialTasks }: Props) {
     }
   }, [updateTask])
 
+  const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  shortcutHandlerRef.current = (e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+
+    if (e.key === 'Escape') {
+      if (showShortcuts) { e.preventDefault(); setShowShortcuts(false); return }
+      if (renamingSheetId !== null) { e.preventDefault(); cancelRename(); return }
+      return
+    }
+
+    const target = e.target
+    const inTextField =
+      target instanceof HTMLElement &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    if (inTextField) return
+
+    if (e.key === '?') {
+      e.preventDefault()
+      setShowShortcuts((v) => !v)
+      return
+    }
+
+    if (e.shiftKey && e.key === 'C') {
+      e.preventDefault()
+      addSheet()
+      return
+    }
+
+    if (e.shiftKey) return
+
+    switch (e.key) {
+      case 'c':
+        e.preventDefault()
+        setTasksState((prev) => [...prev, createTask()])
+        return
+      case 'e':
+        e.preventDefault()
+        exportGanttToXlsx(tasks, {
+          projectName,
+          visibleRange: effectiveRange,
+          includeDayColumns: includeDayColumnsInExport,
+        })
+        return
+      case 't':
+        e.preventDefault()
+        cycleTheme()
+        return
+      case 'f':
+        e.preventDefault()
+        patchActiveSheet({ viewRangeOverride: null })
+        return
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5': {
+        const idx = Number(e.key) - 1
+        const shortcut = visibleRangeShortcuts[idx]
+        if (shortcut) {
+          e.preventDefault()
+          applyVisibleRangeShortcut(shortcut.getRange())
+        }
+        return
+      }
+    }
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      shortcutHandlerRef.current(e)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   function activateSheet(id: string) {
     setRenamingSheetId(null)
     setWorkbook((w) => ({ ...w, activeSheetId: id }))
@@ -879,6 +958,15 @@ export default function GanttBuilder({ initialTasks }: Props) {
           </div>
 
           <div className="gantt-appbar__toolbar">
+            <button
+              type="button"
+              className="gantt-btn gantt-btn--ghost gantt-btn--theme"
+              onClick={() => setShowShortcuts(true)}
+              aria-label="Show keyboard shortcuts"
+              title="Keyboard shortcuts (?)"
+            >
+              <span className="gantt-shortcuts-hint-glyph" aria-hidden="true">?</span>
+            </button>
             <button
               type="button"
               className="gantt-btn gantt-btn--ghost gantt-btn--theme"
@@ -1228,6 +1316,65 @@ export default function GanttBuilder({ initialTasks }: Props) {
           </button>
         </div>
       </nav>
+
+      {showShortcuts && (
+        <div
+          className="gantt-shortcuts-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="gantt-shortcuts-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="gantt-shortcuts-card__head">
+              <h2 className="gantt-shortcuts-card__title">Keyboard shortcuts</h2>
+              <button
+                type="button"
+                className="gantt-shortcuts-card__close"
+                aria-label="Close"
+                onClick={() => setShowShortcuts(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="gantt-shortcuts-card__body">
+              <section className="gantt-shortcuts-group">
+                <h3 className="gantt-shortcuts-group__title">Create</h3>
+                <ul className="gantt-shortcuts-list">
+                  <li><span className="gantt-shortcuts-keys"><kbd>C</kbd></span><span>Add task</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>Shift</kbd><kbd>C</kbd></span><span>New sheet</span></li>
+                </ul>
+              </section>
+              <section className="gantt-shortcuts-group">
+                <h3 className="gantt-shortcuts-group__title">View</h3>
+                <ul className="gantt-shortcuts-list">
+                  <li><span className="gantt-shortcuts-keys"><kbd>F</kbd></span><span>Fit all tasks</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>1</kbd></span><span>2 weeks</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>2</kbd></span><span>1 month</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>3</kbd></span><span>1 quarter</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>4</kbd></span><span>1 year</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>5</kbd></span><span>This year</span></li>
+                </ul>
+              </section>
+              <section className="gantt-shortcuts-group">
+                <h3 className="gantt-shortcuts-group__title">App</h3>
+                <ul className="gantt-shortcuts-list">
+                  <li><span className="gantt-shortcuts-keys"><kbd>E</kbd></span><span>Export XLSX</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>T</kbd></span><span>Cycle theme</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>?</kbd></span><span>Toggle shortcuts</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>Esc</kbd></span><span>Close overlay</span></li>
+                </ul>
+              </section>
+            </div>
+            <div className="gantt-shortcuts-card__foot">
+              Shortcuts pause while typing in any field.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </DragDropProvider>
   )

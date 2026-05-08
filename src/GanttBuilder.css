@@ -1328,3 +1328,148 @@ html.dark .gantt-btn--delete:hover {
     opacity: 1;
   }
 }
+
+/* ─── Keyboard shortcuts overlay ────────────────────────── */
+
+.gantt-shortcuts-hint-glyph {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.gantt-shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  animation: gantt-shortcuts-fade 120ms ease-out;
+}
+
+@keyframes gantt-shortcuts-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gantt-shortcuts-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.gantt-shortcuts-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.gantt-shortcuts-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.2px;
+}
+
+.gantt-shortcuts-card__close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: color 120ms, background 120ms;
+}
+
+.gantt-shortcuts-card__close:hover {
+  color: var(--text-h);
+  background: var(--bg-subtle);
+}
+
+.gantt-shortcuts-card__body {
+  padding: 16px 18px 4px;
+  overflow-y: auto;
+}
+
+.gantt-shortcuts-group {
+  margin-bottom: 16px;
+}
+
+.gantt-shortcuts-group__title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.gantt-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gantt-shortcuts-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text-h);
+  border-radius: 6px;
+}
+
+.gantt-shortcuts-list li:hover {
+  background: var(--bg-subtle);
+}
+
+.gantt-shortcuts-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gantt-shortcuts-keys kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.gantt-shortcuts-card__foot {
+  flex-shrink: 0;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
