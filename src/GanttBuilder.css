@@ -643,6 +643,11 @@ html.dark .gantt-btn--delete:hover {
   background: var(--bg);
 }
 
+.gantt-chart__zoom-fit {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
 .gantt-chart__zoom-btn,
 .gantt-chart__zoom-value {
   font: inherit;

@@ -58,7 +58,7 @@ import { createTask, type GanttTask, todayISO } from './ganttTypes'
 import './GanttBuilder.css'
 
 const DEFAULT_DAY_PX = 26
-const MIN_DAY_PX = 8
+const MIN_DAY_PX = 2
 const MAX_DAY_PX = 60
 const ZOOM_STEP = 4
 const DEFAULT_LABEL_COL_W = 180
@@ -533,6 +533,8 @@ export default function GanttBuilder({ initialTasks }: Props) {
   })
   const labelResizeRef = useRef<{ startClientX: number; startWidth: number } | null>(null)
   const [isLabelResizing, setIsLabelResizing] = useState(false)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const fitTimelineRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     localStorage.setItem('gantt-day-px', String(dayPx))
@@ -580,6 +582,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
     [],
   )
   const resetZoom = useCallback(() => setDayPx(DEFAULT_DAY_PX), [])
+  const fitTimeline = useCallback(() => fitTimelineRef.current(), [])
   const dragBarStateRef = useRef<{
     taskId: string
     mode: BarDragMode
@@ -820,6 +823,18 @@ export default function GanttBuilder({ initialTasks }: Props) {
     }
   }, [updateTask, dayPx])
 
+  fitTimelineRef.current = () => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const numDays = timeline.days.length
+    if (numDays <= 0) return
+    const available = el.clientWidth - labelColWidth
+    if (available <= 0) return
+    const raw = available / numDays
+    const computed = Math.max(MIN_DAY_PX, Math.min(MAX_DAY_PX, raw))
+    setDayPx(Math.round(computed * 100) / 100)
+  }
+
   const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   shortcutHandlerRef.current = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -859,6 +874,22 @@ export default function GanttBuilder({ initialTasks }: Props) {
     if (e.shiftKey && e.key === 'C') {
       e.preventDefault()
       addSheet()
+      return
+    }
+
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault()
+      zoomIn()
+      return
+    }
+    if (e.key === '-') {
+      e.preventDefault()
+      zoomOut()
+      return
+    }
+    if (e.key === '0') {
+      e.preventDefault()
+      fitTimeline()
       return
     }
 
@@ -1215,7 +1246,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   type="button"
                   className="gantt-chart__zoom-btn"
                   aria-label="Zoom out"
-                  title="Zoom out"
+                  title="Zoom out (−)"
                   onClick={zoomOut}
                   disabled={dayPx <= MIN_DAY_PX}
                 >
@@ -1228,19 +1259,28 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   aria-label={`Day width ${dayPx} pixels — click to reset`}
                   onClick={resetZoom}
                 >
-                  {dayPx}px
+                  {Number.isInteger(dayPx) ? dayPx : dayPx.toFixed(1)}px
                 </button>
                 <button
                   type="button"
                   className="gantt-chart__zoom-btn"
                   aria-label="Zoom in"
-                  title="Zoom in"
+                  title="Zoom in (+)"
                   onClick={zoomIn}
                   disabled={dayPx >= MAX_DAY_PX}
                 >
                   +
                 </button>
               </div>
+              <button
+                type="button"
+                className="gantt-btn gantt-btn--ghost gantt-btn--with-kbd gantt-chart__zoom-fit"
+                title="Auto-zoom so the entire visible range fits — press 0"
+                onClick={fitTimeline}
+              >
+                <span>Fit width</span>
+                <kbd className="gantt-btn__kbd" aria-hidden="true">0</kbd>
+              </button>
               <button
                 type="button"
                 className="gantt-btn gantt-btn--secondary gantt-chart__range-fit gantt-btn--with-kbd"
@@ -1260,7 +1300,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
               <p className="gantt-chart__empty">Set a valid date range.</p>
             ) : tasks.length === 0 ? (
               <>
-                <div className="gantt-chart__scroll">
+                <div className="gantt-chart__scroll" ref={scrollContainerRef}>
                   <div
                     className="gantt-chart__pan"
                     style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
@@ -1300,7 +1340,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 </p>
               </>
             ) : (
-              <div className="gantt-chart__scroll">
+              <div className="gantt-chart__scroll" ref={scrollContainerRef}>
                 <div
                   className="gantt-chart__pan"
                   style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
@@ -1490,12 +1530,20 @@ export default function GanttBuilder({ initialTasks }: Props) {
               <section className="gantt-shortcuts-group">
                 <h3 className="gantt-shortcuts-group__title">View</h3>
                 <ul className="gantt-shortcuts-list">
-                  <li><span className="gantt-shortcuts-keys"><kbd>F</kbd></span><span>Fit all tasks</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>F</kbd></span><span>Fit all tasks (date range)</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>1</kbd></span><span>2 weeks</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>2</kbd></span><span>1 month</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>3</kbd></span><span>1 quarter</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>4</kbd></span><span>1 year</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>5</kbd></span><span>This year</span></li>
+                </ul>
+              </section>
+              <section className="gantt-shortcuts-group">
+                <h3 className="gantt-shortcuts-group__title">Zoom</h3>
+                <ul className="gantt-shortcuts-list">
+                  <li><span className="gantt-shortcuts-keys"><kbd>+</kbd></span><span>Zoom in (also <kbd>=</kbd>)</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>−</kbd></span><span>Zoom out</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>0</kbd></span><span>Fit timeline to width</span></li>
                 </ul>
               </section>
               <section className="gantt-shortcuts-group">
