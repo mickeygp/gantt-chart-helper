@@ -367,7 +367,7 @@
 
 .gantt-task-name-cell .gantt-input--task-name {
   flex: 1;
-  min-width: 0;
+  min-width: 8rem;
 }
 
 /* ─── Drag Handle ───────────────────────────────────────── */
@@ -1094,4 +1094,237 @@ html.dark .gantt-btn--delete:hover {
 .gantt-tabs__new:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ─── Responsive: tablet ────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .gantt-builder__main {
+    padding: 0 16px 32px;
+  }
+
+  .gantt-appbar {
+    padding: 0 16px;
+  }
+
+  .gantt-appbar__inner {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    padding: 10px 0;
+    gap: 10px 12px;
+    row-gap: 8px;
+  }
+
+  .gantt-appbar__divider {
+    display: none;
+  }
+
+  .gantt-appbar__project-wrap {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .gantt-appbar__project-input {
+    max-width: 100%;
+    font-size: 14px;
+    padding: 6px 8px;
+  }
+
+  .gantt-appbar__toolbar {
+    margin-left: auto;
+    gap: 6px;
+  }
+
+  .gantt-section {
+    margin-top: 20px;
+  }
+
+  .gantt-tabs__scroll {
+    padding: 8px 12px 0;
+  }
+
+  /* Tighter range controls */
+  .gantt-chart__range {
+    padding: 10px 12px;
+    gap: 6px 10px;
+  }
+
+  .gantt-chart__range-shortcuts .gantt-btn--ghost {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+
+  /* Slightly narrower label column */
+  .gantt-chart__label-col {
+    flex: 0 0 150px;
+  }
+}
+
+/* ─── Responsive: phone ─────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .gantt-builder__main {
+    padding: 0 10px 24px;
+  }
+
+  .gantt-appbar {
+    padding: 0 10px;
+  }
+
+  .gantt-appbar__inner {
+    gap: 8px;
+    row-gap: 8px;
+  }
+
+  .gantt-appbar__wordmark {
+    font-size: 14px;
+  }
+
+  .gantt-appbar__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* Hide the "Export XLSX" text — keep just the icon — to save horizontal space */
+  .gantt-appbar__toolbar .gantt-btn__label {
+    display: none;
+  }
+
+  .gantt-appbar__toolbar .gantt-btn--primary {
+    padding: 8px 10px;
+  }
+
+  /* Compact the Day/Week select */
+  .gantt-appbar__toolbar select.gantt-input {
+    max-width: 110px;
+    font-size: 12.5px !important;
+  }
+
+  /* Section header tightening */
+  .gantt-section {
+    margin-top: 18px;
+  }
+
+  .gantt-section__header {
+    margin-bottom: 8px;
+  }
+
+  /* Task table — keep horizontal scroll, but tighten cells */
+  .gantt-table {
+    font-size: 13px;
+  }
+
+  .gantt-table th,
+  .gantt-table td {
+    padding: 8px 10px;
+  }
+
+  .gantt-table__th-drag,
+  .gantt-table__cell-drag {
+    width: 30px;
+    padding-inline: 4px !important;
+  }
+
+  .gantt-input--date {
+    min-width: 8.25rem;
+    font-size: 13px;
+    padding: 6px 8px;
+  }
+
+  .gantt-input--narrow {
+    width: 3.5rem;
+  }
+
+  .gantt-progress-cell {
+    min-width: 96px;
+    gap: 4px;
+  }
+
+  .gantt-progress-track {
+    min-width: 28px;
+  }
+
+  /* Make subtask + delete buttons always visible on touch (no hover) */
+  .gantt-btn--subtask-inline,
+  .gantt-drag-handle--sm {
+    opacity: 1;
+  }
+
+  /* Range controls */
+  .gantt-chart__range {
+    padding: 10px;
+    gap: 6px 8px;
+  }
+
+  .gantt-chart__range-label {
+    flex-basis: 100%;
+    margin-bottom: 2px;
+  }
+
+  .gantt-chart__range-field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .gantt-chart__range-field .gantt-input--date {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gantt-chart__range-shortcuts {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .gantt-chart__range-fit {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+
+  /* Narrower chart label column */
+  .gantt-chart__label-col {
+    flex: 0 0 128px;
+  }
+
+  .gantt-chart__task-name {
+    font-size: 12.5px;
+    height: 40px;
+    padding: 0 6px 0 calc(4px + var(--task-indent-level, 0) * 14px);
+  }
+
+  .gantt-chart__track {
+    height: 40px;
+  }
+
+  .gantt-chart__bar {
+    height: 18px;
+  }
+
+  /* Tabs */
+  .gantt-tabs__scroll {
+    padding: 6px 8px 0;
+  }
+
+  .gantt-tabs__cell {
+    max-width: 160px;
+  }
+
+  .gantt-tabs__tab {
+    font-size: 12.5px;
+    padding: 8px 4px 9px 10px;
+  }
+
+  .gantt-tabs__close {
+    padding: 7px 8px 9px 4px;
+  }
+}
+
+/* On touch-capable devices, drag handles & action buttons can't rely on hover */
+@media (hover: none) {
+  .gantt-btn--subtask-inline,
+  .gantt-drag-handle--sm,
+  .gantt-chart__bar-resize {
+    opacity: 1;
+  }
 }
