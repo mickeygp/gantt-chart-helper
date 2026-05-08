@@ -185,6 +185,7 @@ function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: 
   return (
     <tr
       ref={ref as unknown as React.RefCallback<HTMLTableRowElement>}
+      data-task-id={t.id}
       className={`gantt-table__task-row${isDragging ? ' gantt-table__task-row--dragging' : ''}${isDropTarget ? ' gantt-table__task-row--drop-target' : ''}`}
       style={{ '--task-color': color } as CSSProperties}
     >
@@ -285,6 +286,7 @@ function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: 
           type="button"
           className="gantt-btn gantt-btn--delete"
           aria-label={`Remove ${t.name}`}
+          title="Remove task (⌘/Ctrl + Backspace)"
           onClick={() => removeTask(t.id)}
         >
           ✕
@@ -753,13 +755,24 @@ export default function GanttBuilder({ initialTasks }: Props) {
 
   const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   shortcutHandlerRef.current = (e: KeyboardEvent) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return
-
     if (e.key === 'Escape') {
       if (showShortcuts) { e.preventDefault(); setShowShortcuts(false); return }
       if (renamingSheetId !== null) { e.preventDefault(); cancelRename(); return }
       return
     }
+
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === 'Backspace') {
+      const target = e.target instanceof HTMLElement ? e.target : null
+      const row = target?.closest('[data-task-id]') as HTMLElement | null
+      const taskId = row?.dataset.taskId
+      if (taskId) {
+        e.preventDefault()
+        removeTask(taskId)
+      }
+      return
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return
 
     const target = e.target
     const inTextField =
@@ -1117,29 +1130,31 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 />
               </label>
               <div className="gantt-chart__range-shortcuts" aria-label="Range shortcuts">
-                {visibleRangeShortcuts.map((shortcut) => (
+                {visibleRangeShortcuts.map((shortcut, i) => (
                   <button
                     key={shortcut.key}
                     type="button"
-                    className="gantt-btn gantt-btn--ghost"
-                    title={shortcut.title}
+                    className="gantt-btn gantt-btn--ghost gantt-btn--with-kbd"
+                    title={`${shortcut.title} — press ${i + 1}`}
                     onClick={() => applyVisibleRangeShortcut(shortcut.getRange())}
                   >
-                    {shortcut.label}
+                    <span>{shortcut.label}</span>
+                    <kbd className="gantt-btn__kbd" aria-hidden="true">{i + 1}</kbd>
                   </button>
                 ))}
               </div>
               <button
                 type="button"
-                className="gantt-btn gantt-btn--secondary gantt-chart__range-fit"
+                className="gantt-btn gantt-btn--secondary gantt-chart__range-fit gantt-btn--with-kbd"
                 title={
                   autoRange
-                    ? 'Snap the visible range to your tasks (clears manual dates)'
-                    : 'Clear manual range and use the default window until you add tasks'
+                    ? 'Snap the visible range to your tasks (clears manual dates) — press F'
+                    : 'Clear manual range and use the default window until you add tasks — press F'
                 }
                 onClick={() => patchActiveSheet({ viewRangeOverride: null })}
               >
-                Fit all tasks
+                <span>Fit all tasks</span>
+                <kbd className="gantt-btn__kbd" aria-hidden="true">F</kbd>
               </button>
             </div>
 
@@ -1342,10 +1357,11 @@ export default function GanttBuilder({ initialTasks }: Props) {
             </div>
             <div className="gantt-shortcuts-card__body">
               <section className="gantt-shortcuts-group">
-                <h3 className="gantt-shortcuts-group__title">Create</h3>
+                <h3 className="gantt-shortcuts-group__title">Tasks</h3>
                 <ul className="gantt-shortcuts-list">
                   <li><span className="gantt-shortcuts-keys"><kbd>C</kbd></span><span>Add task</span></li>
                   <li><span className="gantt-shortcuts-keys"><kbd>Shift</kbd><kbd>C</kbd></span><span>New sheet</span></li>
+                  <li><span className="gantt-shortcuts-keys"><kbd>⌘</kbd><kbd>⌫</kbd></span><span>Remove focused task (Ctrl+Backspace on Windows)</span></li>
                 </ul>
               </section>
               <section className="gantt-shortcuts-group">

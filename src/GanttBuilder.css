@@ -1337,6 +1337,39 @@ html.dark .gantt-btn--delete:hover {
   line-height: 1;
 }
 
+.gantt-btn--with-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-btn__kbd {
+  box-sizing: content-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  min-width: 8px;
+  text-align: center;
+  opacity: 0.85;
+  transition: opacity 120ms, color 120ms, border-color 120ms;
+}
+
+.gantt-btn--with-kbd:hover .gantt-btn__kbd {
+  opacity: 1;
+  color: var(--text-h);
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  .gantt-btn__kbd { display: none; }
+}
+
 .gantt-shortcuts-overlay {
   position: fixed;
   inset: 0;
