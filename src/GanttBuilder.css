@@ -633,8 +633,62 @@ html.dark .gantt-btn--delete:hover {
   border-radius: 6px;
 }
 
-.gantt-chart__range-fit {
+.gantt-chart__zoom {
   margin-left: auto;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.gantt-chart__zoom-btn,
+.gantt-chart__zoom-value {
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  color: var(--text-h);
+  padding: 5px 10px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 120ms, color 120ms;
+}
+
+.gantt-chart__zoom-btn {
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 26px;
+  color: var(--text);
+}
+
+.gantt-chart__zoom-btn:not(:disabled):hover {
+  background: var(--bg-subtle);
+  color: var(--text-h);
+}
+
+.gantt-chart__zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gantt-chart__zoom-value {
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 46px;
+  text-align: center;
+}
+
+.gantt-chart__zoom-value:hover {
+  color: var(--text-h);
+  background: var(--bg-subtle);
+}
+
+.gantt-chart__range-fit {
   font-size: 13px;
   padding: 6px 12px;
 }
@@ -688,6 +742,34 @@ html.dark .gantt-btn--delete:hover {
   background: var(--bg);
   border-right: 1.5px solid var(--border);
   box-sizing: border-box;
+}
+
+.gantt-chart__label-col-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 4;
+  background: transparent;
+  transition: background 120ms;
+  touch-action: none;
+}
+
+.gantt-chart__label-col-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 120ms;
+}
+
+.gantt-chart__label-col-resizer:hover::after,
+.gantt-chart__label-col-resizer--active::after {
+  background: var(--accent);
+  opacity: 0.6;
 }
 
 .gantt-chart__label-header-spacer {

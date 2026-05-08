@@ -57,7 +57,13 @@ import {
 import { createTask, type GanttTask, todayISO } from './ganttTypes'
 import './GanttBuilder.css'
 
-const DAY_PX = 26
+const DEFAULT_DAY_PX = 26
+const MIN_DAY_PX = 8
+const MAX_DAY_PX = 60
+const ZOOM_STEP = 4
+const DEFAULT_LABEL_COL_W = 180
+const MIN_LABEL_COL_W = 100
+const MAX_LABEL_COL_W = 420
 const FOOTER_DROP_ID = '__footer__'
 const TIMELINE_LABEL_PREFIX = 'tl-'
 const TIMELINE_TRACK_PREFIX = 'tltrack-'
@@ -387,6 +393,7 @@ interface DroppableTimelineTrackProps {
   leftPx: number
   widthPx: number
   intersects: boolean
+  dayPx: number
 }
 
 function DroppableTimelineTrack({
@@ -398,6 +405,7 @@ function DroppableTimelineTrack({
   leftPx,
   widthPx,
   intersects,
+  dayPx,
 }: DroppableTimelineTrackProps) {
   const { ref, isDropTarget } = useDroppable({ id: timelineTrackId(t.id) })
   return (
@@ -406,7 +414,7 @@ function DroppableTimelineTrack({
       className={`gantt-chart__track${isDropTarget ? ' gantt-chart__track--drop-target' : ''}`}
       style={
         {
-          width: totalDays * DAY_PX,
+          width: totalDays * dayPx,
           '--task-color': taskColor(idx),
         } as CSSProperties
       }
@@ -513,6 +521,65 @@ export default function GanttBuilder({ initialTasks }: Props) {
   const [draggingBarTaskId, setDraggingBarTaskId] = useState<string | null>(null)
   const [isRowDragging, setIsRowDragging] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [dayPx, setDayPx] = useState<number>(() => {
+    const stored = Number(localStorage.getItem('gantt-day-px'))
+    if (Number.isFinite(stored) && stored >= MIN_DAY_PX && stored <= MAX_DAY_PX) return stored
+    return DEFAULT_DAY_PX
+  })
+  const [labelColWidth, setLabelColWidth] = useState<number>(() => {
+    const stored = Number(localStorage.getItem('gantt-label-col-w'))
+    if (Number.isFinite(stored) && stored >= MIN_LABEL_COL_W && stored <= MAX_LABEL_COL_W) return stored
+    return DEFAULT_LABEL_COL_W
+  })
+  const labelResizeRef = useRef<{ startClientX: number; startWidth: number } | null>(null)
+  const [isLabelResizing, setIsLabelResizing] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem('gantt-day-px', String(dayPx))
+  }, [dayPx])
+
+  useEffect(() => {
+    localStorage.setItem('gantt-label-col-w', String(labelColWidth))
+  }, [labelColWidth])
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const r = labelResizeRef.current
+      if (!r) return
+      const dx = e.clientX - r.startClientX
+      const next = Math.max(MIN_LABEL_COL_W, Math.min(MAX_LABEL_COL_W, r.startWidth + dx))
+      setLabelColWidth(next)
+    }
+    function onUp() {
+      if (!labelResizeRef.current) return
+      labelResizeRef.current = null
+      setIsLabelResizing(false)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [])
+
+  function beginLabelColResize(e: ReactPointerEvent<HTMLElement>) {
+    if (e.button !== 0) return
+    labelResizeRef.current = { startClientX: e.clientX, startWidth: labelColWidth }
+    setIsLabelResizing(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+  }
+
+  const zoomOut = useCallback(
+    () => setDayPx((d) => Math.max(MIN_DAY_PX, d - ZOOM_STEP)),
+    [],
+  )
+  const zoomIn = useCallback(
+    () => setDayPx((d) => Math.min(MAX_DAY_PX, d + ZOOM_STEP)),
+    [],
+  )
+  const resetZoom = useCallback(() => setDayPx(DEFAULT_DAY_PX), [])
   const dragBarStateRef = useRef<{
     taskId: string
     mode: BarDragMode
@@ -564,11 +631,11 @@ export default function GanttBuilder({ initialTasks }: Props) {
     const days = iterateDays(effectiveRange.start, effectiveRange.end)
     return {
       days,
-      totalWidth: days.length * DAY_PX,
+      totalWidth: days.length * dayPx,
       monthSpans: buildMonthSpans(days),
       weekSpans: buildWeekSpans(days),
     }
-  }, [effectiveRange])
+  }, [effectiveRange, dayPx])
 
   const todayOffsetPx = useMemo(() => {
     const today = todayISO()
@@ -576,8 +643,8 @@ export default function GanttBuilder({ initialTasks }: Props) {
     const offsetDays = Math.round(
       (parseISOToUtcMs(today) - parseISOToUtcMs(effectiveRange.start)) / 86_400_000,
     )
-    return offsetDays * DAY_PX + DAY_PX / 2
-  }, [effectiveRange])
+    return offsetDays * dayPx + dayPx / 2
+  }, [effectiveRange, dayPx])
 
   const visibleRangeShortcuts = useMemo<VisibleRangeShortcut[]>(
     () => [
@@ -713,7 +780,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
       const drag = dragBarStateRef.current
       if (!drag) return
       const deltaX = e.clientX - drag.startClientX
-      const dayShift = Math.round(deltaX / DAY_PX)
+      const dayShift = Math.round(deltaX / dayPx)
       if (drag.mode === 'move') {
         updateTask(drag.taskId, {
           start: addDaysISO(drag.originalStart, dayShift),
@@ -751,7 +818,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
     }
-  }, [updateTask])
+  }, [updateTask, dayPx])
 
   const shortcutHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   shortcutHandlerRef.current = (e: KeyboardEvent) => {
@@ -895,7 +962,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
         className="gantt-chart__header-stack"
         style={{
           width: timeline.totalWidth,
-          gridTemplateColumns: `repeat(${timeline.days.length}, ${DAY_PX}px)`,
+          gridTemplateColumns: `repeat(${timeline.days.length}, ${dayPx}px)`,
           gridTemplateRows: 'var(--gantt-header-month-h) var(--gantt-header-week-h)',
         }}
       >
@@ -1143,6 +1210,37 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   </button>
                 ))}
               </div>
+              <div className="gantt-chart__zoom" role="group" aria-label="Timeline zoom">
+                <button
+                  type="button"
+                  className="gantt-chart__zoom-btn"
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                  onClick={zoomOut}
+                  disabled={dayPx <= MIN_DAY_PX}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  className="gantt-chart__zoom-value"
+                  title="Reset zoom"
+                  aria-label={`Day width ${dayPx} pixels — click to reset`}
+                  onClick={resetZoom}
+                >
+                  {dayPx}px
+                </button>
+                <button
+                  type="button"
+                  className="gantt-chart__zoom-btn"
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                  onClick={zoomIn}
+                  disabled={dayPx >= MAX_DAY_PX}
+                >
+                  +
+                </button>
+              </div>
               <button
                 type="button"
                 className="gantt-btn gantt-btn--secondary gantt-chart__range-fit gantt-btn--with-kbd"
@@ -1165,10 +1263,22 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 <div className="gantt-chart__scroll">
                   <div
                     className="gantt-chart__pan"
-                    style={{ '--gantt-day-px': `${DAY_PX}px` } as CSSProperties}
+                    style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
                   >
-                    <div className="gantt-chart__label-col">
+                    <div
+                      className="gantt-chart__label-col"
+                      style={{ flex: `0 0 ${labelColWidth}px` }}
+                    >
                       <div className="gantt-chart__label-header-spacer" aria-hidden="true" />
+                      <div
+                        className={`gantt-chart__label-col-resizer${isLabelResizing ? ' gantt-chart__label-col-resizer--active' : ''}`}
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize task name column"
+                        title="Drag to resize"
+                        onPointerDown={beginLabelColResize}
+                        onDoubleClick={() => setLabelColWidth(DEFAULT_LABEL_COL_W)}
+                      />
                     </div>
                     <div
                       className="gantt-chart__timeline-col"
@@ -1193,9 +1303,12 @@ export default function GanttBuilder({ initialTasks }: Props) {
               <div className="gantt-chart__scroll">
                 <div
                   className="gantt-chart__pan"
-                  style={{ '--gantt-day-px': `${DAY_PX}px` } as CSSProperties}
+                  style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
                 >
-                  <div className="gantt-chart__label-col">
+                  <div
+                    className="gantt-chart__label-col"
+                    style={{ flex: `0 0 ${labelColWidth}px` }}
+                  >
                     <div className="gantt-chart__label-header-spacer" aria-hidden="true" />
                     {tasks.map((t, idx) => (
                       <SortableTimelineTaskName
@@ -1205,6 +1318,15 @@ export default function GanttBuilder({ initialTasks }: Props) {
                         tasks={tasks}
                       />
                     ))}
+                    <div
+                      className={`gantt-chart__label-col-resizer${isLabelResizing ? ' gantt-chart__label-col-resizer--active' : ''}`}
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label="Resize task name column"
+                      title="Drag to resize · double-click to reset"
+                      onPointerDown={beginLabelColResize}
+                      onDoubleClick={() => setLabelColWidth(DEFAULT_LABEL_COL_W)}
+                    />
                   </div>
                   <div
                     className="gantt-chart__timeline-col"
@@ -1239,8 +1361,8 @@ export default function GanttBuilder({ initialTasks }: Props) {
                         const offsetDays = Math.round(
                           (parseISOToUtcMs(visStart) - r0) / dayMs,
                         )
-                        leftPx = offsetDays * DAY_PX
-                        widthPx = Math.max(daysInclusive(visStart, visEnd) * DAY_PX, 4)
+                        leftPx = offsetDays * dayPx
+                        widthPx = Math.max(daysInclusive(visStart, visEnd) * dayPx, 4)
                       }
 
                       return (
@@ -1254,6 +1376,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                           leftPx={leftPx}
                           widthPx={widthPx}
                           intersects={intersects}
+                          dayPx={dayPx}
                         />
                       )
                     })}
