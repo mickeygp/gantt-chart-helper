@@ -38,6 +38,38 @@ export function formatWeekLabel(mondayISO: string): string {
   return `Week ${isoWeekNumber(mondayISO)}`
 }
 
+export type WeekLabelFormat = 'iso' | 'month' | 'date'
+
+/** Nth-Monday-of-its-calendar-month (1–5), based on the Monday's day-of-month. */
+function weekOfMonth(mondayISO: string): number {
+  const ms = parseISOToUtcMs(mondayISO)
+  if (Number.isNaN(ms)) return 1
+  const day = new Date(ms).getUTCDate()
+  return Math.floor((day - 1) / 7) + 1
+}
+
+function formatMonthDay(mondayISO: string): string {
+  const ms = parseISOToUtcMs(mondayISO)
+  if (Number.isNaN(ms)) return mondayISO
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(ms))
+}
+
+export function formatWeekLabelFor(mondayISO: string, format: WeekLabelFormat): string {
+  switch (format) {
+    case 'month':
+      return `W${weekOfMonth(mondayISO)}`
+    case 'date':
+      return formatMonthDay(mondayISO)
+    case 'iso':
+    default:
+      return formatWeekLabel(mondayISO)
+  }
+}
+
 export function buildMonthSpans(days: string[]): TimelineSpan[] {
   if (!days.length) return []
   const spans: TimelineSpan[] = []
@@ -55,7 +87,10 @@ export function buildMonthSpans(days: string[]): TimelineSpan[] {
   return spans
 }
 
-export function buildWeekSpans(days: string[]): TimelineSpan[] {
+export function buildWeekSpans(
+  days: string[],
+  format: WeekLabelFormat = 'iso',
+): TimelineSpan[] {
   if (!days.length) return []
   const spans: TimelineSpan[] = []
   let i = 0
@@ -64,7 +99,7 @@ export function buildWeekSpans(days: string[]): TimelineSpan[] {
     let j = i + 1
     while (j < days.length && mondayOfWeek(days[j]) === wkMon) j++
     spans.push({
-      label: formatWeekLabel(wkMon),
+      label: formatWeekLabelFor(wkMon, format),
       dayCount: j - i,
     })
     i = j

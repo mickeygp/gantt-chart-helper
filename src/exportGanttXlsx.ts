@@ -2,12 +2,18 @@ import * as XLSX from 'xlsx-js-style'
 
 import { getEffectiveProgress, type GanttTask } from './ganttTypes'
 import { addDaysISO, daysInclusive, parseISOToUtcMs } from './ganttDates'
-import { buildMonthSpans, buildWeekSpans, formatMonthYear } from './ganttTimeline'
+import {
+  buildMonthSpans,
+  buildWeekSpans,
+  formatMonthYear,
+  type WeekLabelFormat,
+} from './ganttTimeline'
 
 export type ExportGanttOptions = {
   projectName: string
   visibleRange?: { start: string; end: string }
   includeDayColumns?: boolean
+  weekLabelFormat?: WeekLabelFormat
   /** Used for filename and workbook metadata; defaults to `new Date()`. */
   exportedAt?: Date
 }
@@ -484,11 +490,12 @@ function buildGanttSheet(
   visibleRange: { start: string; end: string },
   includeDayColumns: boolean,
   exportDate: string,
+  weekLabelFormat: WeekLabelFormat,
 ): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {}
   const days = iterateDays(visibleRange.start, visibleRange.end)
   const monthSpans = buildMonthSpans(days)
-  const weekSpans = buildWeekSpans(days)
+  const weekSpans = buildWeekSpans(days, weekLabelFormat)
   const todayIdx = days.indexOf(exportDate)
 
   const weekBuckets = (() => {
@@ -785,6 +792,7 @@ export function exportGanttToXlsx(
     range,
     options.includeDayColumns ?? true,
     exportDate,
+    options.weekLabelFormat ?? 'iso',
   )
 
   const book = XLSX.utils.book_new()

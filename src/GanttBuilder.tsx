@@ -46,7 +46,7 @@ function useTheme(): [Theme, () => void] {
 
 import { exportGanttToXlsx } from './exportGanttXlsx'
 import { addDaysISO, daysInclusive, parseISOToUtcMs } from './ganttDates'
-import { buildMonthSpans, buildWeekSpans } from './ganttTimeline'
+import { buildMonthSpans, buildWeekSpans, type WeekLabelFormat } from './ganttTimeline'
 import { loadGanttWorkbook, saveGanttWorkbook } from './ganttLocalCache'
 import {
   createSheet,
@@ -66,6 +66,12 @@ import './GanttBuilder.css'
 const DEFAULT_DAY_PX = 26
 const MIN_DAY_PX = 2
 const MAX_DAY_PX = 60
+const WEEK_LABEL_FORMATS: readonly WeekLabelFormat[] = ['iso', 'month', 'date']
+const WEEK_LABEL_FORMAT_OPTIONS: { value: WeekLabelFormat; label: string }[] = [
+  { value: 'iso', label: 'ISO week (W22)' },
+  { value: 'month', label: 'Week of month (W1)' },
+  { value: 'date', label: 'Date of Monday' },
+]
 const ZOOM_STEP = 4
 const DEFAULT_LABEL_COL_W = 180
 const MIN_LABEL_COL_W = 100
@@ -547,6 +553,12 @@ export default function GanttBuilder({ initialTasks }: Props) {
     if (Number.isFinite(stored) && stored >= MIN_LABEL_COL_W && stored <= MAX_LABEL_COL_W) return stored
     return DEFAULT_LABEL_COL_W
   })
+  const [weekLabelFormat, setWeekLabelFormat] = useState<WeekLabelFormat>(() => {
+    const stored = localStorage.getItem('gantt-week-label-format')
+    return (WEEK_LABEL_FORMATS as readonly string[]).includes(stored ?? '')
+      ? (stored as WeekLabelFormat)
+      : 'iso'
+  })
   const labelResizeRef = useRef<{ startClientX: number; startWidth: number } | null>(null)
   const [isLabelResizing, setIsLabelResizing] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -559,6 +571,10 @@ export default function GanttBuilder({ initialTasks }: Props) {
   useEffect(() => {
     localStorage.setItem('gantt-label-col-w', String(labelColWidth))
   }, [labelColWidth])
+
+  useEffect(() => {
+    localStorage.setItem('gantt-week-label-format', weekLabelFormat)
+  }, [weekLabelFormat])
 
   useEffect(() => {
     function onMove(e: PointerEvent) {
@@ -652,9 +668,9 @@ export default function GanttBuilder({ initialTasks }: Props) {
       days,
       totalWidth: days.length * dayPx,
       monthSpans: buildMonthSpans(days),
-      weekSpans: buildWeekSpans(days),
+      weekSpans: buildWeekSpans(days, weekLabelFormat),
     }
-  }, [effectiveRange, dayPx])
+  }, [effectiveRange, dayPx, weekLabelFormat])
 
   const todayOffsetPx = useMemo(() => {
     const today = todayISO()
@@ -928,6 +944,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
           projectName,
           visibleRange: effectiveRange,
           includeDayColumns: includeDayColumnsInExport,
+          weekLabelFormat,
         })
         return
       case 't':
@@ -1148,6 +1165,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   projectName,
                   visibleRange: effectiveRange,
                   includeDayColumns: includeDayColumnsInExport,
+                  weekLabelFormat,
                 })
               }
             >
@@ -1294,6 +1312,22 @@ export default function GanttBuilder({ initialTasks }: Props) {
                   +
                 </button>
               </div>
+              <label className="gantt-chart__week-label-select">
+                <span className="visually-hidden">Week label format</span>
+                <select
+                  className="gantt-input gantt-input-select"
+                  value={weekLabelFormat}
+                  onChange={(e) => setWeekLabelFormat(e.target.value as WeekLabelFormat)}
+                  aria-label="Week label format"
+                  title="Week label format"
+                >
+                  {WEEK_LABEL_FORMAT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 className="gantt-btn gantt-btn--ghost gantt-btn--with-kbd gantt-chart__zoom-fit"

@@ -648,6 +648,16 @@ html.dark .gantt-btn--delete:hover {
   padding: 6px 10px;
 }
 
+.gantt-chart__week-label-select {
+  display: inline-flex;
+  align-items: center;
+}
+
+.gantt-chart__week-label-select select {
+  font-size: 13px;
+  padding: 6px 26px 6px 10px;
+}
+
 .gantt-chart__zoom-btn,
 .gantt-chart__zoom-value {
   font: inherit;
