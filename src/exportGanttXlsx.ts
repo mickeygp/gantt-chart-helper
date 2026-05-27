@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx-js-style'
 
-import type { GanttTask } from './ganttTypes'
+import { getEffectiveProgress, type GanttTask } from './ganttTypes'
 import { addDaysISO, daysInclusive, parseISOToUtcMs } from './ganttDates'
 import { buildMonthSpans, buildWeekSpans, formatMonthYear } from './ganttTimeline'
 
@@ -318,9 +318,9 @@ function summarizeTasks(tasks: GanttTask[]) {
     0,
   )
   const avgProgress = Math.round(
-    tasks.reduce((sum, t) => sum + Math.min(100, Math.max(0, t.progress)), 0) / tasks.length,
+    tasks.reduce((sum, t) => sum + getEffectiveProgress(t, tasks), 0) / tasks.length,
   )
-  const completed = tasks.filter((t) => t.progress >= 100).length
+  const completed = tasks.filter((t) => getEffectiveProgress(t, tasks) >= 100).length
   return { totalDays, avgProgress, completed }
 }
 
@@ -451,12 +451,13 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
       setCell(ws, r, 1, t.start, bodyCenter(alt))
       setCell(ws, r, 2, t.end, bodyCenter(alt))
       setCell(ws, r, 3, Math.max(0, daysInclusive(t.start, t.end)), bodyCenter(alt))
+      const pct = getEffectiveProgress(t, tasks)
       setCell(
         ws,
         r,
         4,
-        Math.min(100, Math.max(0, Math.round(t.progress))),
-        progressStyle(alt, t.progress),
+        Math.min(100, Math.max(0, Math.round(pct))),
+        progressStyle(alt, pct),
       )
     })
     applyRange(ws, 0, 0, headerRow + tasks.length, headers.length - 1)
@@ -640,7 +641,8 @@ function buildGanttSheet(
         visStart = taskStartMs < rangeStartMs ? visibleRange.start : t.start
         visEnd = taskEndMs > rangeEndMs ? visibleRange.end : t.end
         spanDays = Math.max(1, daysInclusive(visStart, visEnd))
-        doneDays = Math.max(0, Math.min(spanDays, Math.round((spanDays * t.progress) / 100)))
+        const pct = getEffectiveProgress(t, tasks)
+        doneDays = Math.max(0, Math.min(spanDays, Math.round((spanDays * pct) / 100)))
         startOffset = Math.round((parseISOToUtcMs(visStart) - rangeStartMs) / dayMs)
         endOffset = startOffset + spanDays - 1
       }

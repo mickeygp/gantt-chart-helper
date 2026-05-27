@@ -54,7 +54,13 @@ import {
   type GanttSheetState,
   type GanttWorkbookState,
 } from './ganttSheet'
-import { createTask, type GanttTask, todayISO } from './ganttTypes'
+import {
+  createTask,
+  getEffectiveProgress,
+  hasSubtasks,
+  type GanttTask,
+  todayISO,
+} from './ganttTypes'
 import './GanttBuilder.css'
 
 const DEFAULT_DAY_PX = 26
@@ -188,6 +194,10 @@ function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: 
   const { ref, handleRef, isDragging, isDropTarget } = useSortable({ id: t.id, index: idx })
   const depth = countAncestorDepth(tasks, t)
   const color = taskColor(idx)
+  const isParent = hasSubtasks(t, tasks)
+  const effectiveProgress = isParent
+    ? Math.round(getEffectiveProgress(t, tasks))
+    : t.progress
   return (
     <tr
       ref={ref as unknown as React.RefCallback<HTMLTableRowElement>}
@@ -271,7 +281,11 @@ function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: 
             min={0}
             max={100}
             aria-label={`Progress for ${t.name}`}
-            value={t.progress}
+            value={effectiveProgress}
+            disabled={isParent}
+            readOnly={isParent}
+            title={isParent ? 'Computed from subtasks (average)' : undefined}
+            onFocus={(e) => e.currentTarget.select()}
             onChange={(e) =>
               updateTask(t.id, {
                 progress: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
@@ -282,7 +296,7 @@ function SortableTaskRow({ t, idx, tasks, updateTask, removeTask, addSubtask }: 
           <div className="gantt-progress-track" aria-hidden="true">
             <div
               className="gantt-progress-track__fill"
-              style={{ width: `${t.progress}%` }}
+              style={{ width: `${effectiveProgress}%` }}
             />
           </div>
         </div>
@@ -394,6 +408,7 @@ interface DroppableTimelineTrackProps {
   widthPx: number
   intersects: boolean
   dayPx: number
+  progressPct: number
 }
 
 function DroppableTimelineTrack({
@@ -406,6 +421,7 @@ function DroppableTimelineTrack({
   widthPx,
   intersects,
   dayPx,
+  progressPct,
 }: DroppableTimelineTrackProps) {
   const { ref, isDropTarget } = useDroppable({ id: timelineTrackId(t.id) })
   return (
@@ -436,7 +452,7 @@ function DroppableTimelineTrack({
           />
           <span
             className="gantt-chart__bar-fill"
-            style={{ width: `${t.progress}%` }}
+            style={{ width: `${progressPct}%` }}
           />
           <button
             type="button"
@@ -648,6 +664,12 @@ export default function GanttBuilder({ initialTasks }: Props) {
     )
     return offsetDays * dayPx + dayPx / 2
   }, [effectiveRange, dayPx])
+
+  const weekOffset = useMemo(() => {
+    const ms = parseISOToUtcMs(effectiveRange.start)
+    if (Number.isNaN(ms)) return 0
+    return (new Date(ms).getUTCDay() + 6) % 7
+  }, [effectiveRange.start])
 
   const visibleRangeShortcuts = useMemo<VisibleRangeShortcut[]>(
     () => [
@@ -1303,7 +1325,10 @@ export default function GanttBuilder({ initialTasks }: Props) {
                 <div className="gantt-chart__scroll" ref={scrollContainerRef}>
                   <div
                     className="gantt-chart__pan"
-                    style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
+                    style={{
+                      '--gantt-day-px': `${dayPx}px`,
+                      '--gantt-week-offset': String(weekOffset),
+                    } as CSSProperties}
                   >
                     <div
                       className="gantt-chart__label-col"
@@ -1343,7 +1368,10 @@ export default function GanttBuilder({ initialTasks }: Props) {
               <div className="gantt-chart__scroll" ref={scrollContainerRef}>
                 <div
                   className="gantt-chart__pan"
-                  style={{ '--gantt-day-px': `${dayPx}px` } as CSSProperties}
+                  style={{
+                    '--gantt-day-px': `${dayPx}px`,
+                    '--gantt-week-offset': String(weekOffset),
+                  } as CSSProperties}
                 >
                   <div
                     className="gantt-chart__label-col"
@@ -1417,6 +1445,7 @@ export default function GanttBuilder({ initialTasks }: Props) {
                           widthPx={widthPx}
                           intersects={intersects}
                           dayPx={dayPx}
+                          progressPct={getEffectiveProgress(t, tasks)}
                         />
                       )
                     })}

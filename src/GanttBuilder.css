@@ -916,7 +916,7 @@ html.dark .gantt-btn--delete:hover {
   position: relative;
   height: 44px;
   border-bottom: 1px solid var(--border);
-  background:
+  background-image:
     repeating-linear-gradient(
       to right,
       transparent,
@@ -924,7 +924,8 @@ html.dark .gantt-btn--delete:hover {
       color-mix(in srgb, var(--border) 55%, transparent) calc(var(--week) - 1px),
       color-mix(in srgb, var(--border) 55%, transparent) var(--week)
     );
-  transition: background 0.1s;
+  background-position-x: calc(var(--gantt-week-offset, 0) * var(--day) * -1);
+  transition: background-color 0.1s;
 }
 
 .gantt-chart__track:hover {
