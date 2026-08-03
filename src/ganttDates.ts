@@ -12,6 +12,14 @@ export function daysInclusive(startISO: string, endISO: string): number {
   return Math.floor((b - a) / 86_400_000) + 1
 }
 
+/** Signed whole-day difference, `to` minus `from`. Returns 0 on bad input. */
+export function diffDays(fromISO: string, toISO: string): number {
+  const a = parseISOToUtcMs(fromISO)
+  const b = parseISOToUtcMs(toISO)
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0
+  return Math.round((b - a) / 86_400_000)
+}
+
 export function addDaysISO(iso: string, deltaDays: number): string {
   const t = parseISOToUtcMs(iso)
   if (Number.isNaN(t)) return iso

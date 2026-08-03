@@ -1,7 +1,16 @@
 import * as XLSX from 'xlsx-js-style'
 
-import { getEffectiveProgress, type GanttTask } from './ganttTypes'
+import {
+  getEffectiveProgress,
+  getVisibleTasks,
+  isPlotted,
+  resolveTaskRanges,
+  unionRanges,
+  type GanttTask,
+  type TaskRange,
+} from './ganttTypes'
 import { addDaysISO, daysInclusive, parseISOToUtcMs } from './ganttDates'
+import { validDeps } from './ganttDeps'
 import {
   buildMonthSpans,
   buildWeekSpans,
@@ -118,6 +127,15 @@ function bodyLeft(alt: boolean, bold = false): CellStyle {
   return {
     ...base,
     font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRAND.textDark } },
+  }
+}
+
+/** Greyed-italic date: the value was rolled up from subtasks, not entered. */
+function dateFallbackStyle(alt: boolean): CellStyle {
+  return {
+    ...(alt ? styleBodyAlt : styleBody),
+    font: { name: 'Calibri', sz: 10, italic: true, color: { rgb: BRAND.textLight } },
+    alignment: { vertical: 'center', horizontal: 'center' },
   }
 }
 
@@ -278,17 +296,6 @@ function clampRangeOrder(start: string, end: string): { start: string; end: stri
   return { start, end }
 }
 
-function rangeForTasks(tasks: GanttTask[]): { start: string; end: string } | null {
-  if (!tasks.length) return null
-  let min = tasks[0].start
-  let max = tasks[0].end
-  for (const t of tasks) {
-    if (t.start < min) min = t.start
-    if (t.end > max) max = t.end
-  }
-  return { start: min, end: max }
-}
-
 function iterateDays(fromISO: string, toISO: string): string[] {
   const out: string[] = []
   let cur = fromISO
@@ -317,17 +324,20 @@ function buildDepthMap(tasks: GanttTask[]): Map<string, number> {
   return map
 }
 
-function summarizeTasks(tasks: GanttTask[]) {
-  if (!tasks.length) return { totalDays: 0, avgProgress: 0, completed: 0 }
-  const totalDays = tasks.reduce(
-    (sum, t) => sum + Math.max(0, daysInclusive(t.start, t.end)),
-    0,
-  )
+function summarizeTasks(tasks: GanttTask[], ranges: Map<string, TaskRange | null>) {
+  if (!tasks.length) {
+    return { totalDays: 0, avgProgress: 0, completed: 0, unscheduled: 0 }
+  }
+  const totalDays = tasks.reduce((sum, t) => {
+    const r = ranges.get(t.id)
+    return sum + (r ? Math.max(0, daysInclusive(r.start, r.end)) : 0)
+  }, 0)
   const avgProgress = Math.round(
     tasks.reduce((sum, t) => sum + getEffectiveProgress(t, tasks), 0) / tasks.length,
   )
   const completed = tasks.filter((t) => getEffectiveProgress(t, tasks) >= 100).length
-  return { totalDays, avgProgress, completed }
+  const unscheduled = tasks.filter((t) => !ranges.get(t.id)).length
+  return { totalDays, avgProgress, completed, unscheduled }
 }
 
 // ── Project sheet ──────────────────────────────────────────
@@ -335,10 +345,12 @@ function buildProjectSheet(
   projectName: string,
   exportDate: string,
   tasks: GanttTask[],
+  plottedTasks: GanttTask[],
+  ranges: Map<string, TaskRange | null>,
   range: { start: string; end: string },
 ): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {}
-  const summary = summarizeTasks(tasks)
+  const summary = summarizeTasks(tasks, ranges)
 
   setCell(ws, 0, 0, projectName, styleTitle)
   setCell(
@@ -358,6 +370,7 @@ function buildProjectSheet(
     ['Export date', exportDate, true],
     ['Visible range', `${range.start} → ${range.end}`, false],
     ['Tasks exported', tasks.length, true],
+    ['Plotted on timeline', `${plottedTasks.length} / ${tasks.length}`, false],
   ]
   detailRows.forEach(([label, value, alt], i) => {
     const r = 5 + i
@@ -374,6 +387,7 @@ function buildProjectSheet(
     ['Total task-days', summary.totalDays, false],
     ['Average progress', `${summary.avgProgress}%`, true],
     ['Completed tasks', `${summary.completed} / ${tasks.length}`, false],
+    ['Tasks without dates', summary.unscheduled, true],
   ]
   summaryRows.forEach(([label, value, alt], i) => {
     const r = summaryStart + 2 + i
@@ -401,9 +415,22 @@ function buildProjectSheet(
 }
 
 // ── Tasks sheet ────────────────────────────────────────────
-function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkSheet {
+function buildTasksSheet(
+  projectName: string,
+  tasks: GanttTask[],
+  ranges: Map<string, TaskRange | null>,
+): XLSX.WorkSheet {
   const ws: XLSX.WorkSheet = {}
-  const headers = ['Task', 'Start', 'End', 'Duration (days)', 'Progress'] as const
+  const headers = [
+    'Task',
+    'Start',
+    'End',
+    'Duration (days)',
+    'Progress',
+    'Plotted',
+    'Depends on',
+  ] as const
+  const nameById = new Map(tasks.map((t) => [t.id, t.name.trim() || '(untitled)']))
 
   setCell(ws, 0, 0, `Tasks — ${projectName}`, styleTitle)
   setCell(
@@ -424,10 +451,7 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
   if (!tasks.length) {
     const r = headerRow + 1
     setCell(ws, r, 0, '(no tasks to export)', styleBodyMuted)
-    setCell(ws, r, 1, '', styleBody)
-    setCell(ws, r, 2, '', styleBody)
-    setCell(ws, r, 3, '', styleBody)
-    setCell(ws, r, 4, '', styleBody)
+    for (let c = 1; c < headers.length; c += 1) setCell(ws, r, c, '', styleBody)
     applyRange(ws, 0, 0, r, headers.length - 1)
   } else {
     tasks.forEach((t, i) => {
@@ -454,9 +478,20 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
           left: { style: isSubtask ? 'thin' : 'thick', color: { rgb: color } },
         },
       })
-      setCell(ws, r, 1, t.start, bodyCenter(alt))
-      setCell(ws, r, 2, t.end, bodyCenter(alt))
-      setCell(ws, r, 3, Math.max(0, daysInclusive(t.start, t.end)), bodyCenter(alt))
+      // Dates are optional; a blank field falls back to the subtask roll-up,
+      // which is shown greyed out so it reads as inherited rather than entered.
+      const range = ranges.get(t.id) ?? null
+      const startStyle = t.start === null ? dateFallbackStyle(alt) : bodyCenter(alt)
+      const endStyle = t.end === null ? dateFallbackStyle(alt) : bodyCenter(alt)
+      setCell(ws, r, 1, t.start ?? range?.start ?? '—', startStyle)
+      setCell(ws, r, 2, t.end ?? range?.end ?? '—', endStyle)
+      setCell(
+        ws,
+        r,
+        3,
+        range ? Math.max(0, daysInclusive(range.start, range.end)) : '—',
+        bodyCenter(alt),
+      )
       const pct = getEffectiveProgress(t, tasks)
       setCell(
         ws,
@@ -465,6 +500,27 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
         Math.min(100, Math.max(0, Math.round(pct))),
         progressStyle(alt, pct),
       )
+      setCell(ws, r, 5, isPlotted(t) ? 'Yes' : 'No', {
+        ...bodyCenter(alt),
+        font: {
+          name: 'Calibri',
+          sz: 11,
+          color: { rgb: isPlotted(t) ? BRAND.textDark : BRAND.textLight },
+        },
+      })
+      // Predecessors by name — ids mean nothing to whoever opens the file.
+      const depNames = validDeps(t, tasks)
+        .map((id) => nameById.get(id))
+        .filter((n): n is string => n !== undefined)
+      setCell(ws, r, 6, depNames.length ? depNames.join(', ') : '—', {
+        ...bodyCenter(alt),
+        alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
+        font: {
+          name: 'Calibri',
+          sz: 10,
+          color: { rgb: depNames.length ? BRAND.textDark : BRAND.textLight },
+        },
+      })
     })
     applyRange(ws, 0, 0, headerRow + tasks.length, headers.length - 1)
   }
@@ -473,7 +529,15 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
     { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
   ]
-  ws['!cols'] = [{ wch: 38 }, { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 12 }]
+  ws['!cols'] = [
+    { wch: 38 },
+    { wch: 13 },
+    { wch: 13 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 28 },
+  ]
   const rowHeights: { hpx: number }[] = []
   rowHeights[0] = { hpx: 32 }
   rowHeights[1] = { hpx: 22 }
@@ -486,7 +550,10 @@ function buildTasksSheet(projectName: string, tasks: GanttTask[]): XLSX.WorkShee
 // ── Gantt sheet ────────────────────────────────────────────
 function buildGanttSheet(
   projectName: string,
-  tasks: GanttTask[],
+  allTasks: GanttTask[],
+  /** Only the rows the app plots: expanded and ticked, in the same order. */
+  rows: GanttTask[],
+  ranges: Map<string, TaskRange | null>,
   visibleRange: { start: string; end: string },
   includeDayColumns: boolean,
   exportDate: string,
@@ -608,11 +675,13 @@ function buildGanttSheet(
   const rangeStartMs = parseISOToUtcMs(visibleRange.start)
   const rangeEndMs = parseISOToUtcMs(visibleRange.end)
   const dayMs = 86_400_000
-  const depthMap = buildDepthMap(tasks)
+  const depthMap = buildDepthMap(allTasks)
+  // Colors follow the position in the full task list so they match the app.
+  const colorIndexById = new Map(allTasks.map((t, i) => [t.id, i]))
 
-  if (!tasks.length) {
+  if (!rows.length) {
     const r = taskStartRow
-    setCell(ws, r, 0, '(no tasks)', {
+    setCell(ws, r, 0, allTasks.length ? '(no tasks plotted)' : '(no tasks)', {
       ...styleBodyMuted,
       alignment: { vertical: 'center', horizontal: 'left', indent: 1 },
     })
@@ -626,29 +695,35 @@ function buildGanttSheet(
       )
     }
   } else {
-    tasks.forEach((t, i) => {
+    rows.forEach((t, i) => {
       const r = taskStartRow + i
       const alt = i % 2 === 1
       const depth = depthMap.get(t.id) ?? 0
-      const colors = paletteFor(i)
+      const colors = paletteFor(colorIndexById.get(t.id) ?? i)
+      const taskRange = ranges.get(t.id) ?? null
       const namePrefix = depth > 0 ? '↳ ' : ''
-      setCell(ws, r, 0, `${namePrefix}${t.name.trim() || '(untitled)'}`, ganttTaskNameCell(alt, colors.done, depth))
+      const nameSuffix = taskRange ? '' : ' (no dates)'
+      setCell(
+        ws,
+        r,
+        0,
+        `${namePrefix}${t.name.trim() || '(untitled)'}${nameSuffix}`,
+        ganttTaskNameCell(alt, colors.done, depth),
+      )
 
-      const taskStartMs = parseISOToUtcMs(t.start)
-      const taskEndMs = parseISOToUtcMs(t.end)
-      const intersects = taskEndMs >= rangeStartMs && taskStartMs <= rangeEndMs
+      const taskStartMs = taskRange ? parseISOToUtcMs(taskRange.start) : NaN
+      const taskEndMs = taskRange ? parseISOToUtcMs(taskRange.end) : NaN
+      const intersects =
+        taskRange !== null && taskEndMs >= rangeStartMs && taskStartMs <= rangeEndMs
 
-      let visStart = ''
-      let visEnd = ''
-      let spanDays = 0
       let doneDays = 0
       let startOffset = 0
       let endOffset = 0
-      if (intersects) {
-        visStart = taskStartMs < rangeStartMs ? visibleRange.start : t.start
-        visEnd = taskEndMs > rangeEndMs ? visibleRange.end : t.end
-        spanDays = Math.max(1, daysInclusive(visStart, visEnd))
-        const pct = getEffectiveProgress(t, tasks)
+      if (intersects && taskRange) {
+        const visStart = taskStartMs < rangeStartMs ? visibleRange.start : taskRange.start
+        const visEnd = taskEndMs > rangeEndMs ? visibleRange.end : taskRange.end
+        const spanDays = Math.max(1, daysInclusive(visStart, visEnd))
+        const pct = getEffectiveProgress(t, allTasks)
         doneDays = Math.max(0, Math.min(spanDays, Math.round((spanDays * pct) / 100)))
         startOffset = Math.round((parseISOToUtcMs(visStart) - rangeStartMs) / dayMs)
         endOffset = startOffset + spanDays - 1
@@ -696,7 +771,7 @@ function buildGanttSheet(
     })
   }
 
-  const lastRow = taskStartRow + Math.max(tasks.length, 1) - 1
+  const lastRow = taskStartRow + Math.max(rows.length, 1) - 1
   applyRange(ws, 0, 0, lastRow, cols - 1)
 
   const merges: XLSX.Range[] = [
@@ -776,7 +851,11 @@ export function exportGanttToXlsx(
       ? options.projectName.trim()
       : 'Untitled project'
 
-  const autoRange = rangeForTasks(tasks)
+  const ranges = resolveTaskRanges(tasks)
+  // The Gantt sheet mirrors what the app draws: expanded rows that are ticked.
+  const plottedRows = getVisibleTasks(tasks).filter(isPlotted)
+
+  const autoRange = unionRanges(plottedRows, ranges)
   const fallbackRange = (() => {
     const start = exportDateYYYYMMDD(exportedAt)
     return { start, end: addDaysISO(start, 30) }
@@ -784,11 +863,20 @@ export function exportGanttToXlsx(
   const rawRange = options.visibleRange ?? autoRange ?? fallbackRange
   const range = clampRangeOrder(rawRange.start, rawRange.end)
 
-  const projectWs = buildProjectSheet(displayProjectName, exportDate, tasks, range)
-  const tasksWs = buildTasksSheet(displayProjectName, tasks)
+  const projectWs = buildProjectSheet(
+    displayProjectName,
+    exportDate,
+    tasks,
+    plottedRows,
+    ranges,
+    range,
+  )
+  const tasksWs = buildTasksSheet(displayProjectName, tasks, ranges)
   const ganttWs = buildGanttSheet(
     displayProjectName,
     tasks,
+    plottedRows,
+    ranges,
     range,
     options.includeDayColumns ?? true,
     exportDate,

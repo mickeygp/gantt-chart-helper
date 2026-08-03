@@ -253,6 +253,7 @@
 .gantt-section__header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -274,6 +275,23 @@
   border-radius: 999px;
   padding: 0 7px;
   line-height: 1.7;
+}
+
+.gantt-section__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.gantt-section__actions .gantt-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.gantt-section__actions .gantt-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ─── Task Table ────────────────────────────────────────── */
@@ -337,6 +355,152 @@
   padding-inline: 6px !important;
   text-align: center;
   vertical-align: middle;
+}
+
+/* ─── Plot-on-timeline checkbox column ──────────────────── */
+
+.gantt-table__th-plot,
+.gantt-table__cell-plot {
+  width: 34px;
+  padding-inline: 4px 0 !important;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.gantt-checkbox {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.gantt-checkbox::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border: solid #fff;
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
+  opacity: 0;
+}
+
+.gantt-checkbox:checked,
+.gantt-checkbox:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.gantt-checkbox:checked::after {
+  opacity: 1;
+}
+
+.gantt-checkbox:indeterminate::after {
+  width: 8px;
+  height: 0;
+  border-width: 0 0 2px 0;
+  transform: none;
+  opacity: 1;
+}
+
+.gantt-checkbox:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.gantt-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.gantt-checkbox:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Un-plotted rows stay editable but read as "not on the chart". */
+.gantt-table__task-row--unplotted .gantt-task-name-cell,
+.gantt-table__task-row--unplotted .gantt-input--date,
+.gantt-table__task-row--unplotted .gantt-num,
+.gantt-table__task-row--unplotted .gantt-progress-cell {
+  opacity: 0.55;
+}
+
+/* ─── Collapse toggle ───────────────────────────────────── */
+
+.gantt-collapse-toggle {
+  appearance: none;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.gantt-collapse-toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+  transform: rotate(90deg);
+}
+
+.gantt-collapse-toggle[aria-expanded='false'] svg {
+  transform: rotate(0deg);
+}
+
+.gantt-collapse-toggle:hover {
+  background: var(--bg-sunken);
+  color: var(--text-h);
+}
+
+.gantt-collapse-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gantt-collapse-toggle--empty {
+  cursor: default;
+  pointer-events: none;
+}
+
+.gantt-collapse-toggle--sm {
+  width: 14px;
+  height: 14px;
+}
+
+.gantt-collapse-toggle--sm svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Count of subtasks folded away under a collapsed parent. */
+.gantt-subtask-count {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 /* ─── Task color swatch & subtask indicator ─────────────── */
@@ -481,6 +645,23 @@
   text-align: right;
 }
 
+/* Duration rolled up from subtasks rather than typed in. */
+.gantt-num__derived {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.gantt-num__unset {
+  color: var(--text-muted);
+}
+
+/* ─── Optional date fields ──────────────────────────────── */
+
+.gantt-input--date-unset {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
 /* ─── Progress cell ─────────────────────────────────────── */
 
 .gantt-progress-cell {
@@ -582,6 +763,9 @@ html.dark .gantt-btn--delete:hover {
 .gantt-chart {
   --gantt-header-month-h: 32px;
   --gantt-header-week-h: 52px;
+  /* Row height, shared by the label column, the tracks, and the dependency
+     arrow overlay (which reads it back with getComputedStyle). */
+  --gantt-track-h: 44px;
   border: 1.5px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
@@ -812,6 +996,11 @@ html.dark .gantt-btn--delete:hover {
   cursor: default;
 }
 
+.gantt-chart__task-name,
+.gantt-chart__track {
+  height: var(--gantt-track-h);
+}
+
 .gantt-chart__task-name-dot {
   width: 7px;
   height: 7px;
@@ -977,6 +1166,56 @@ html.dark .gantt-btn--delete:hover {
   background: var(--task-color, var(--accent));
   border-radius: 3px 0 0 3px;
   opacity: 0.75;
+}
+
+/*
+ * Summary bar: dates roll up from subtasks, so it can't be dragged. Drawn as a
+ * flatter bracket with end caps to read as a container, not a task.
+ */
+.gantt-chart__bar--summary {
+  height: 11px;
+  border-radius: 3px;
+  cursor: default;
+  background: color-mix(in srgb, var(--task-color, var(--accent)) 20%, var(--bg));
+  border-color: color-mix(in srgb, var(--task-color, var(--accent)) 55%, transparent);
+  box-shadow: none;
+}
+
+.gantt-chart__bar--summary::before,
+.gantt-chart__bar--summary::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  width: 0;
+  height: 0;
+  border-top: 5px solid color-mix(in srgb, var(--task-color, var(--accent)) 65%, transparent);
+}
+
+.gantt-chart__bar--summary::before {
+  left: -1.5px;
+  border-right: 5px solid transparent;
+}
+
+.gantt-chart__bar--summary::after {
+  right: -1.5px;
+  border-left: 5px solid transparent;
+}
+
+.gantt-chart__bar--summary .gantt-chart__bar-fill {
+  border-radius: 2px 0 0 2px;
+}
+
+/* Row for a task that has no dates anywhere in its subtree. */
+.gantt-chart__unscheduled {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* Bar dragging state */
@@ -1323,6 +1562,12 @@ html.dark .gantt-btn--delete:hover {
     padding-inline: 4px !important;
   }
 
+  .gantt-table__th-plot,
+  .gantt-table__cell-plot {
+    width: 28px;
+    padding-inline: 2px 0 !important;
+  }
+
   .gantt-input--date {
     min-width: 8.25rem;
     font-size: 13px;
@@ -1384,14 +1629,13 @@ html.dark .gantt-btn--delete:hover {
     flex: 0 0 128px;
   }
 
-  .gantt-chart__task-name {
-    font-size: 12.5px;
-    height: 40px;
-    padding: 0 6px 0 calc(4px + var(--task-indent-level, 0) * 14px);
+  .gantt-chart {
+    --gantt-track-h: 40px;
   }
 
-  .gantt-chart__track {
-    height: 40px;
+  .gantt-chart__task-name {
+    font-size: 12.5px;
+    padding: 0 6px 0 calc(4px + var(--task-indent-level, 0) * 14px);
   }
 
   .gantt-chart__bar {
@@ -1602,4 +1846,254 @@ html.dark .gantt-btn--delete:hover {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ─── Dependencies ──────────────────────────────────────── */
+
+.gantt-deps-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.gantt-dep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 130px;
+  padding: 2px 2px 2px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.gantt-dep-chip__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-dep-chip__remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 3px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gantt-dep-chip__remove:hover {
+  color: var(--text-h);
+  background: var(--bg-sunken);
+}
+
+.gantt-dep-chip__remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gantt-deps-cell__picker {
+  font-size: 11.5px;
+  padding: 3px 20px 3px 7px;
+  max-width: 118px;
+}
+
+/* Timeline connectors */
+
+.gantt-chart__deps {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2;
+}
+
+.gantt-chart__dep-line {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.gantt-chart__dep-head {
+  fill: var(--text-muted);
+  opacity: 0.85;
+}
+
+/* ─── Sheet tab: duplicate ──────────────────────────────── */
+
+.gantt-tabs__duplicate {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 8px 4px 10px 4px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.gantt-tabs__duplicate:hover {
+  color: var(--text-h);
+  background: var(--bg-sunken);
+}
+
+.gantt-tabs__duplicate:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ─── Cloud sync ────────────────────────────────────────── */
+
+.gantt-cloud-pill {
+  gap: 6px;
+}
+
+.gantt-cloud-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gantt-cloud-pill--saved .gantt-cloud-pill__dot {
+  background: #10b981;
+}
+
+.gantt-cloud-pill--saving .gantt-cloud-pill__dot,
+.gantt-cloud-pill--syncing .gantt-cloud-pill__dot {
+  background: #f59e0b;
+}
+
+.gantt-cloud-pill--error .gantt-cloud-pill__dot,
+.gantt-cloud-pill--conflict .gantt-cloud-pill__dot {
+  background: #ef4444;
+}
+
+.gantt-account-card {
+  max-width: 440px;
+}
+
+.gantt-account-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.gantt-account-card__line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+.gantt-account-card__hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.gantt-account-card__form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gantt-account-card__form .gantt-input {
+  flex: 1 1 200px;
+}
+
+.gantt-account-card__choices {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gantt-account-card__error {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: #ef4444;
+}
+
+/* ─── Notice toast ──────────────────────────────────────── */
+
+.gantt-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 10px 10px 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  color: var(--text-h);
+}
+
+.gantt-notice--error {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.gantt-notice__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.gantt-notice__close:hover {
+  opacity: 1;
+  background: var(--bg-sunken);
+}
+
+@media (max-width: 720px) {
+  .gantt-deps-cell {
+    min-width: 110px;
+  }
+
+  .gantt-tabs__duplicate {
+    padding: 6px 3px 8px;
+  }
+}
+
+.gantt-google-btn {
+  align-self: flex-start;
+  gap: 10px;
+  padding: 9px 16px;
+  font-weight: 500;
 }

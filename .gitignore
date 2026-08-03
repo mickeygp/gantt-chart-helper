@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Local env files — .env.example is the committed template
+.env
+.env.*
+!.env.example
+
+# Local scratch
+.claude/worktrees
+*.tgz
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +31,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.vercel

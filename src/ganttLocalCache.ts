@@ -1,114 +1,24 @@
-import type { GanttSheetState, GanttWorkbookState } from './ganttSheet'
-import { createSheet } from './ganttSheet'
-import type { GanttTask } from './ganttTypes'
+import type { GanttWorkbookState } from './ganttSheet'
+import {
+  migrateLegacyV1,
+  parseWorkbookPayload,
+  serializeWorkbook,
+} from './ganttSerialize'
 
 const STORAGE_KEY = 'gantt-chart-helper'
 /** Legacy payload shape (single project). */
 const LEGACY_STORAGE_KEY = 'gantt-chart-helper:v1'
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-function isGanttTask(x: unknown): x is GanttTask {
-  if (!x || typeof x !== 'object') return false
-  const o = x as Record<string, unknown>
-  return (
-    typeof o.id === 'string' &&
-    typeof o.name === 'string' &&
-    (typeof o.parentId === 'undefined' || typeof o.parentId === 'string') &&
-    typeof o.start === 'string' &&
-    typeof o.end === 'string' &&
-    ISO_DATE.test(o.start) &&
-    ISO_DATE.test(o.end) &&
-    typeof o.progress === 'number' &&
-    Number.isFinite(o.progress)
-  )
-}
-
-function normalizeTask(t: GanttTask): GanttTask {
-  return {
-    ...t,
-    parentId: typeof t.parentId === 'string' && t.parentId.length > 0 ? t.parentId : undefined,
-    progress: Math.min(100, Math.max(0, Math.round(t.progress))),
-  }
-}
-
-function parseViewOverride(
-  x: unknown,
-): { start: string; end: string } | null {
-  if (x === null) return null
-  if (!x || typeof x !== 'object') return null
-  const o = x as Record<string, unknown>
-  if (
-    typeof o.start !== 'string' ||
-    typeof o.end !== 'string' ||
-    !ISO_DATE.test(o.start) ||
-    !ISO_DATE.test(o.end)
-  ) {
-    return null
-  }
-  return { start: o.start, end: o.end }
-}
-
-function parseSheet(o: unknown): GanttSheetState | null {
-  if (!o || typeof o !== 'object') return null
-  const r = o as Record<string, unknown>
-  if (typeof r.id !== 'string' || typeof r.sheetName !== 'string') return null
-  if (typeof r.projectName !== 'string') return null
-  if (!Array.isArray(r.tasks)) return null
-  const tasks = r.tasks.filter(isGanttTask).map(normalizeTask)
-  const viewRangeOverride = parseViewOverride(r.viewRangeOverride)
-  return {
-    id: r.id,
-    sheetName: r.sheetName.slice(0, 31),
-    projectName: r.projectName,
-    tasks,
-    viewRangeOverride,
-  }
-}
-
-function migrateLegacyV1(raw: string): GanttWorkbookState | null {
-  try {
-    const data = JSON.parse(raw) as unknown
-    if (!data || typeof data !== 'object') return null
-    const o = data as Record<string, unknown>
-    if (o.v !== 1) return null
-    if (typeof o.projectName !== 'string') return null
-    if (!Array.isArray(o.tasks)) return null
-    const tasks = o.tasks.filter(isGanttTask).map(normalizeTask)
-    const viewRangeOverride = parseViewOverride(o.viewRangeOverride)
-    const sheet = createSheet({
-      sheetName: 'Sheet 1',
-      projectName: o.projectName,
-      tasks,
-      viewRangeOverride,
-    })
-    return { activeSheetId: sheet.id, sheets: [sheet] }
-  } catch {
-    return null
-  }
-}
-
+/**
+ * localStorage stays the source of truth for signed-out use, and doubles as an
+ * offline cache once cloud sync is on — the app always renders from local data
+ * first, then reconciles with the server.
+ */
 export function loadGanttWorkbook(): GanttWorkbookState | null {
   if (typeof localStorage === 'undefined') return null
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const data = JSON.parse(raw) as unknown
-      if (!data || typeof data !== 'object') return null
-      const o = data as Record<string, unknown>
-      if (o.v !== 2) return null
-      if (typeof o.activeSheetId !== 'string') return null
-      if (!Array.isArray(o.sheets)) return null
-      const sheets = o.sheets
-        .map(parseSheet)
-        .filter((s): s is GanttSheetState => s !== null)
-      if (!sheets.length) return null
-      const activeOk = sheets.some((s) => s.id === o.activeSheetId)
-      return {
-        activeSheetId: activeOk ? o.activeSheetId : sheets[0].id,
-        sheets,
-      }
-    }
+    if (raw) return parseWorkbookPayload(JSON.parse(raw) as unknown)
 
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
     if (legacy) {
@@ -131,12 +41,7 @@ export function loadGanttWorkbook(): GanttWorkbookState | null {
 export function saveGanttWorkbook(state: GanttWorkbookState): void {
   if (typeof localStorage === 'undefined') return
   try {
-    const payload = JSON.stringify({
-      v: 2,
-      activeSheetId: state.activeSheetId,
-      sheets: state.sheets,
-    })
-    localStorage.setItem(STORAGE_KEY, payload)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeWorkbook(state)))
   } catch {
     // quota / private mode
   }
